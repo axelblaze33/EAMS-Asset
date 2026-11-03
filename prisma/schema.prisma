@@ -1,0 +1,586 @@
+// EAMS data model. See docs/ARCHITECTURE.md for the ER diagram and integrity rules.
+// Partial unique indexes that Prisma cannot express are added in the SQL migration
+// (prisma/migrations/*_partial_indexes).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum AssetStatus {
+  AVAILABLE
+  ASSIGNED
+  UNDER_MAINTENANCE
+  DAMAGED
+  LOST
+  RETIRED
+  DISPOSED
+}
+
+enum AssetCondition {
+  NEW
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  RETURNED
+}
+
+enum AcknowledgementStatus {
+  PENDING
+  ACKNOWLEDGED
+}
+
+// How the employee confirmed receipt. Staff record it; employees don't log in.
+enum AcknowledgementMethod {
+  SIGNED_FORM
+  EMAIL
+  IN_PERSON
+  OTHER
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_NOTICE
+  ON_LEAVE
+  EXITED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
+enum RequestType {
+  NEW_ASSET
+  REPLACEMENT
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum MaintenanceStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_PARTS
+  COMPLETED
+  CANCELLED
+}
+
+enum ClearanceStatus {
+  INITIATED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ClearanceItemResolution {
+  PENDING
+  RETURNED
+  MISSING
+  DAMAGED
+  WAIVED
+}
+
+enum DocumentType {
+  ASSET_IMAGE
+  INVOICE
+  HANDOVER
+  RETURN_PHOTO
+  MAINTENANCE_INVOICE
+  OTHER
+}
+
+enum NotificationType {
+  ASSET_ASSIGNED
+  RETURN_REMINDER
+  RETURN_OVERDUE
+  REQUEST_PENDING
+  REQUEST_UPDATED
+  WARRANTY_EXPIRY
+  MAINTENANCE_UPDATE
+  EXIT_CLEARANCE
+  SYSTEM
+}
+
+// ─── Identity & access ────────────────────────────────────────────────────────
+
+model Role {
+  id          String           @id @default(cuid())
+  key         String           @unique // SUPER_ADMIN | ADMIN | HR | EMPLOYEE | custom
+  name        String
+  description String?
+  isSystem    Boolean          @default(false) @map("is_system")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  permissions RolePermission[]
+  users       User[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique // e.g. "asset:create"
+  module      String
+  description String?
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String
+  passwordHash     String    @map("password_hash")
+  roleId           String    @map("role_id")
+  role             Role      @relation(fields: [roleId], references: [id])
+  employeeId       String?   @unique @map("employee_id")
+  employee         Employee? @relation(fields: [employeeId], references: [id])
+  isActive         Boolean   @default(true) @map("is_active")
+  // Bumped on password change / deactivation to invalidate existing JWTs.
+  sessionVersion   Int       @default(0) @map("session_version")
+  failedLoginCount Int       @default(0) @map("failed_login_count")
+  lockedUntil      DateTime? @map("locked_until") @db.Timestamptz
+  lastLoginAt      DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  notifications            Notification[]
+  auditLogs                AuditLog[]
+  assetsCreated            Asset[]                 @relation("AssetCreatedBy")
+  assignmentsMade          AssetAssignment[]       @relation("AssignedBy")
+  acknowledgementsRecorded AssetAssignment[]       @relation("AcknowledgementRecordedBy")
+  returnsProcessed         AssetReturn[]           @relation("ReturnProcessedBy")
+  requestsReviewed         AssetRequest[]          @relation("RequestReviewedBy")
+  requestsLogged           AssetRequest[]          @relation("RequestLoggedBy")
+  maintenanceAssigned      MaintenanceRequest[]    @relation("MaintenanceAssignee")
+  maintenanceReported      MaintenanceRequest[]    @relation("MaintenanceReporter")
+  documentsUploaded        AssetDocument[]
+  clearancesInitiated      EmployeeExitClearance[] @relation("ClearanceInitiatedBy")
+  clearancesCompleted      EmployeeExitClearance[] @relation("ClearanceCompletedBy")
+
+  @@index([roleId])
+  @@map("users")
+}
+
+// ─── Organisation ─────────────────────────────────────────────────────────────
+
+model Department {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  code      String     @unique
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime?  @map("deleted_at") @db.Timestamptz
+  employees Employee[]
+  assets    Asset[]
+
+  @@map("departments")
+}
+
+model Designation {
+  id        String     @id @default(cuid())
+  title     String     @unique
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime?  @map("deleted_at") @db.Timestamptz
+  employees Employee[]
+
+  @@map("designations")
+}
+
+model Branch {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  code      String     @unique
+  address   String?
+  city      String?
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime?  @map("deleted_at") @db.Timestamptz
+  employees Employee[]
+  assets    Asset[]
+
+  @@map("branches")
+}
+
+model Employee {
+  id               String           @id @default(cuid())
+  employeeCode     String           @unique @map("employee_code")
+  fullName         String           @map("full_name")
+  email            String           @unique
+  phone            String?
+  departmentId     String?          @map("department_id")
+  department       Department?      @relation(fields: [departmentId], references: [id])
+  designationId    String?          @map("designation_id")
+  designation      Designation?     @relation(fields: [designationId], references: [id])
+  branchId         String?          @map("branch_id")
+  branch           Branch?          @relation(fields: [branchId], references: [id])
+  managerId        String?          @map("manager_id")
+  manager          Employee?        @relation("ReportingManager", fields: [managerId], references: [id])
+  reports          Employee[]       @relation("ReportingManager")
+  joiningDate      DateTime?        @map("joining_date") @db.Date
+  exitDate         DateTime?        @map("exit_date") @db.Date
+  employmentStatus EmploymentStatus @default(ACTIVE) @map("employment_status")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz
+
+  user        User?
+  assignments AssetAssignment[]
+  requests    AssetRequest[]
+  clearances  EmployeeExitClearance[]
+
+  @@index([departmentId])
+  @@index([branchId])
+  @@index([employmentStatus])
+  @@index([fullName])
+  @@map("employees")
+}
+
+model Vendor {
+  id            String               @id @default(cuid())
+  name          String               @unique
+  contactPerson String?              @map("contact_person")
+  email         String?
+  phone         String?
+  address       String?
+  gstNumber     String?              @map("gst_number")
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime?            @map("deleted_at") @db.Timestamptz
+  assets        Asset[]
+  maintenance   MaintenanceRequest[]
+
+  @@map("vendors")
+}
+
+// ─── Assets ───────────────────────────────────────────────────────────────────
+
+model AssetCategory {
+  id               String         @id @default(cuid())
+  name             String         @unique
+  code             String         @unique // used as asset tag prefix, e.g. LAP
+  description      String?
+  // Straight-line depreciation inputs for the depreciation report.
+  usefulLifeMonths Int            @default(36) @map("useful_life_months")
+  salvagePercent   Decimal        @default(0) @map("salvage_percent") @db.Decimal(5, 2)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz
+  assets           Asset[]
+  requests         AssetRequest[]
+
+  @@map("asset_categories")
+}
+
+model Asset {
+  id             String         @id @default(cuid())
+  assetCode      String         @unique @map("asset_code") // human ID, e.g. AST-000123
+  name           String
+  categoryId     String         @map("category_id")
+  category       AssetCategory  @relation(fields: [categoryId], references: [id])
+  brand          String?
+  model          String?
+  serialNumber   String?        @unique @map("serial_number")
+  assetTag       String?        @unique @map("asset_tag") // company barcode / sticker
+  purchaseDate   DateTime?      @map("purchase_date") @db.Date
+  purchaseCost   Decimal?       @map("purchase_cost") @db.Decimal(12, 2)
+  vendorId       String?        @map("vendor_id")
+  vendor         Vendor?        @relation(fields: [vendorId], references: [id])
+  invoiceNumber  String?        @map("invoice_number")
+  warrantyStart  DateTime?      @map("warranty_start") @db.Date
+  warrantyExpiry DateTime?      @map("warranty_expiry") @db.Date
+  condition      AssetCondition @default(NEW)
+  status         AssetStatus    @default(AVAILABLE)
+  branchId       String?        @map("branch_id")
+  branch         Branch?        @relation(fields: [branchId], references: [id])
+  departmentId   String?        @map("department_id")
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  specifications Json?
+  description    String?
+  createdById    String?        @map("created_by_id")
+  createdBy      User?          @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?      @map("deleted_at") @db.Timestamptz
+
+  assignments    AssetAssignment[]
+  maintenance    MaintenanceRequest[]
+  documents      AssetDocument[]
+  clearanceItems ClearanceItem[]
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([branchId])
+  @@index([departmentId])
+  @@index([warrantyExpiry])
+  @@index([deletedAt])
+  @@map("assets")
+}
+
+model AssetAssignment {
+  id                    String                 @id @default(cuid())
+  assetId               String                 @map("asset_id")
+  asset                 Asset                  @relation(fields: [assetId], references: [id])
+  employeeId            String                 @map("employee_id")
+  employee              Employee               @relation(fields: [employeeId], references: [id])
+  // Assets handed over together share a batch id (multi-asset assignment).
+  batchId               String?                @map("batch_id")
+  assignedAt            DateTime               @map("assigned_at") @db.Date
+  expectedReturnAt      DateTime?              @map("expected_return_at") @db.Date
+  conditionAtHandover   AssetCondition         @map("condition_at_handover")
+  accessories           String[]               @default([])
+  remarks               String?
+  status                AssignmentStatus       @default(ACTIVE)
+  acknowledgement       AcknowledgementStatus  @default(PENDING)
+  acknowledgedAt        DateTime?              @map("acknowledged_at") @db.Timestamptz
+  acknowledgementMethod AcknowledgementMethod? @map("acknowledgement_method")
+  acknowledgementNote   String?                @map("acknowledgement_note")
+  acknowledgedById      String?                @map("acknowledged_by_id")
+  acknowledgedBy        User?                  @relation("AcknowledgementRecordedBy", fields: [acknowledgedById], references: [id])
+  assignedById          String                 @map("assigned_by_id")
+  assignedBy            User                   @relation("AssignedBy", fields: [assignedById], references: [id])
+  requestId             String?                @unique @map("request_id")
+  request               AssetRequest?          @relation(fields: [requestId], references: [id])
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+
+  return    AssetReturn?
+  documents AssetDocument[]
+
+  @@index([assetId])
+  @@index([employeeId, status])
+  @@index([batchId])
+  @@index([assignedAt])
+  @@map("asset_assignments")
+}
+
+model AssetReturn {
+  id                 String          @id @default(cuid())
+  assignmentId       String          @unique @map("assignment_id")
+  assignment         AssetAssignment @relation(fields: [assignmentId], references: [id])
+  returnedAt         DateTime        @map("returned_at") @db.Date
+  conditionAtReturn  AssetCondition  @map("condition_at_return")
+  missingAccessories String[]        @default([]) @map("missing_accessories")
+  damageNotes        String?         @map("damage_notes")
+  deductionAmount    Decimal?        @map("deduction_amount") @db.Decimal(12, 2)
+  deductionNotes     String?         @map("deduction_notes")
+  remarks            String?
+  nextStatus         AssetStatus     @map("next_status")
+  processedById      String          @map("processed_by_id")
+  processedBy        User            @relation("ReturnProcessedBy", fields: [processedById], references: [id])
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  documents          AssetDocument[]
+
+  @@index([returnedAt])
+  @@map("asset_returns")
+}
+
+model AssetRequest {
+  id            String           @id @default(cuid())
+  requestCode   String           @unique @map("request_code") // REQ-000045
+  employeeId    String           @map("employee_id")
+  employee      Employee         @relation(fields: [employeeId], references: [id])
+  categoryId    String           @map("category_id")
+  category      AssetCategory    @relation(fields: [categoryId], references: [id])
+  type          RequestType      @default(NEW_ASSET)
+  reason        String
+  priority      Priority         @default(MEDIUM)
+  status        RequestStatus    @default(PENDING)
+  // Staff member who logged the request on the employee's behalf.
+  requestedById String?          @map("requested_by_id")
+  requestedBy   User?            @relation("RequestLoggedBy", fields: [requestedById], references: [id])
+  reviewedById  String?          @map("reviewed_by_id")
+  reviewedBy    User?            @relation("RequestReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt    DateTime?        @map("reviewed_at") @db.Timestamptz
+  reviewNotes   String?          @map("review_notes")
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  assignment    AssetAssignment?
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("asset_requests")
+}
+
+model MaintenanceRequest {
+  id              String            @id @default(cuid())
+  ticketCode      String            @unique @map("ticket_code") // MNT-000012
+  assetId         String            @map("asset_id")
+  asset           Asset             @relation(fields: [assetId], references: [id])
+  issue           String
+  priority        Priority          @default(MEDIUM)
+  status          MaintenanceStatus @default(OPEN)
+  reportedById    String?           @map("reported_by_id")
+  reportedBy      User?             @relation("MaintenanceReporter", fields: [reportedById], references: [id])
+  assigneeId      String?           @map("assignee_id")
+  assignee        User?             @relation("MaintenanceAssignee", fields: [assigneeId], references: [id])
+  vendorId        String?           @map("vendor_id")
+  vendor          Vendor?           @relation(fields: [vendorId], references: [id])
+  cost            Decimal?          @db.Decimal(12, 2)
+  startedAt       DateTime?         @map("started_at") @db.Date
+  completedAt     DateTime?         @map("completed_at") @db.Date
+  resolutionNotes String?           @map("resolution_notes")
+  // Asset status to restore when the ticket closes (captured when it opened).
+  previousStatus  AssetStatus?      @map("previous_status")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  documents       AssetDocument[]
+
+  @@index([assetId])
+  @@index([status])
+  @@map("maintenance_requests")
+}
+
+model AssetDocument {
+  id            String              @id @default(cuid())
+  type          DocumentType
+  fileName      String              @map("file_name")
+  storagePath   String              @unique @map("storage_path")
+  mimeType      String              @map("mime_type")
+  sizeBytes     Int                 @map("size_bytes")
+  assetId       String?             @map("asset_id")
+  asset         Asset?              @relation(fields: [assetId], references: [id])
+  assignmentId  String?             @map("assignment_id")
+  assignment    AssetAssignment?    @relation(fields: [assignmentId], references: [id])
+  returnId      String?             @map("return_id")
+  return        AssetReturn?        @relation(fields: [returnId], references: [id])
+  maintenanceId String?             @map("maintenance_id")
+  maintenance   MaintenanceRequest? @relation(fields: [maintenanceId], references: [id])
+  uploadedById  String?             @map("uploaded_by_id")
+  uploadedBy    User?               @relation(fields: [uploadedById], references: [id])
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([assetId])
+  @@index([assignmentId])
+  @@index([returnId])
+  @@index([maintenanceId])
+  @@map("asset_documents")
+}
+
+// ─── Exit clearance ───────────────────────────────────────────────────────────
+
+model EmployeeExitClearance {
+  id             String          @id @default(cuid())
+  employeeId     String          @map("employee_id")
+  employee       Employee        @relation(fields: [employeeId], references: [id])
+  lastWorkingDay DateTime        @map("last_working_day") @db.Date
+  status         ClearanceStatus @default(INITIATED)
+  notes          String?
+  initiatedById  String          @map("initiated_by_id")
+  initiatedBy    User            @relation("ClearanceInitiatedBy", fields: [initiatedById], references: [id])
+  completedById  String?         @map("completed_by_id")
+  completedBy    User?           @relation("ClearanceCompletedBy", fields: [completedById], references: [id])
+  completedAt    DateTime?       @map("completed_at") @db.Timestamptz
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  items          ClearanceItem[]
+
+  @@index([employeeId])
+  @@index([status])
+  @@map("employee_exit_clearance")
+}
+
+// One row per asset the employee held when clearance started.
+model ClearanceItem {
+  id             String                  @id @default(cuid())
+  clearanceId    String                  @map("clearance_id")
+  clearance      EmployeeExitClearance   @relation(fields: [clearanceId], references: [id], onDelete: Cascade)
+  assetId        String                  @map("asset_id")
+  asset          Asset                   @relation(fields: [assetId], references: [id])
+  resolution     ClearanceItemResolution @default(PENDING)
+  notes          String?
+  recoveryAmount Decimal?                @map("recovery_amount") @db.Decimal(12, 2)
+  resolvedAt     DateTime?               @map("resolved_at") @db.Timestamptz
+
+  @@unique([clearanceId, assetId])
+  @@map("clearance_items")
+}
+
+// ─── Cross-cutting ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  readAt    DateTime?        @map("read_at") @db.Timestamptz
+  // Lets the daily cron avoid sending the same reminder twice.
+  dedupeKey String?          @unique @map("dedupe_key")
+  // Set when an email channel delivers it (future integration).
+  emailedAt DateTime?        @map("emailed_at") @db.Timestamptz
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId, readAt])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String // e.g. "asset.create", "assignment.create"
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  summary    String?
+  before     Json?
+  after      Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// Human-readable sequential codes (AST-000001, REQ-000001, ...).
+model Counter {
+  key   String @id
+  value Int    @default(0)
+
+  @@map("counters")
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("settings")
+}

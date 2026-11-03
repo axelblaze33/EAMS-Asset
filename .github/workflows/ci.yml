@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, unit tests, build
+    runs-on: ubuntu-latest
+    env:
+      # Build-time placeholders only; nothing connects during these steps.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      SESSION_SECRET: ci-only-session-secret-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx next typegen
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: End-to-end smoke test
+    runs-on: ubuntu-latest
+    needs: check
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: eams
+          POSTGRES_PASSWORD: eams
+          POSTGRES_DB: eams
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U eams"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://eams:eams@localhost:5432/eams
+      DIRECT_URL: postgresql://eams:eams@localhost:5432/eams
+      SESSION_SECRET: ci-only-session-secret-0123456789abcdef
+      CRON_SECRET: ci-only-cron-secret
+      SEED_ADMIN_PASSWORD: CiAdminPassw0rd
+      SEED_DEMO_DATA: "true"
+      E2E_BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:deploy
+      - run: npm run db:seed
+      - run: npm run build
+      - name: Start the app
+        run: |
+          npm start > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3000/login && exit 0; sleep 1; done
+          cat server.log; exit 1
+      - run: npm run test:e2e
+      - if: failure()
+        run: cat server.log

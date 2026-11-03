@@ -7,7 +7,7 @@ happens to them from procurement to disposal.
 
 ```mermaid
 flowchart LR
-  U[Browser<br/>React Server + Client Components] -->|HTTPS| V[Vercel Edge<br/>middleware.ts: session gate]
+  U[Browser<br/>React Server + Client Components] -->|HTTPS| V[Vercel<br/>proxy.ts: session gate]
   V --> N[Next.js App Router<br/>Server Components / Server Actions / Route Handlers]
   N -->|Prisma Client<br/>pooled connection| DB[(PostgreSQL<br/>Supabase or Neon)]
   N -->|service-role key, server only| S[(Supabase Storage<br/>private bucket)]
@@ -21,31 +21,43 @@ flowchart LR
 | Forms | React Hook Form + Zod | Same Zod schema validates on the client and again in the server action |
 | Mutations | Server Actions (forms), Route Handlers (exports, uploads, cron) | No separate API server; works natively on Vercel serverless |
 | Data | PostgreSQL + Prisma | Relational integrity, transactions, partial unique indexes |
-| Auth | Auth.js v5, credentials (bcrypt), JWT session cookie | Users and roles live in our own DB; works with any Postgres host |
+| Auth | Email + password (bcrypt), signed httpOnly session cookie (`jose`), data-access layer | Users and roles live in our own DB; works with any Postgres host; role changes and deactivation apply on the next request |
 | Files | Supabase Storage, private bucket, signed URLs | No local filesystem persistence on Vercel |
 | Jobs | Vercel Cron → `/api/cron/daily` | Warranty / overdue reminders without a long-running worker |
 
 ## 2. Authorization model (RBAC)
 
 - `roles` and `permissions` are DB tables joined by `role_permissions`; each `user` has one role.
-- Permissions are string keys like `asset:create`, `assignment:create`, `report:export`.
-- The permission list is loaded into the JWT at sign-in, so checks cost no DB round-trip.
-- **Every** server action / route handler calls `requirePermission(...)` before touching data.
-  Hiding a button in the UI is only cosmetic.
+- Permissions are string keys like `asset:create`, `assignment:create`, `report:export`
+  (defined in `src/lib/auth/permissions.ts`, editable per role in Settings → Roles).
+- The session cookie carries only the user id and a session version. `getCurrentUser()` in
+  `src/lib/auth/dal.ts` re-reads role, permissions and active status from the DB once per request,
+  so a role change or deactivation takes effect immediately. Password resets and deactivation
+  bump the session version, which invalidates every existing cookie for that user.
+- **Every** page calls `requirePagePermission(...)` and every server action / route handler calls
+  `authorize(...)` before touching data. Hiding a button in the UI is only cosmetic.
+- Sign-in locks an account for 15 minutes after 5 consecutive failures.
 - Employee-scoped data (`asset:read:own`, `request:create:own`) is filtered server-side by the
   user's linked `employee_id`; an employee can never fetch another employee's records by ID.
 
-| Permission area | Super Admin | Admin / IT | HR | Employee |
-|---|:-:|:-:|:-:|:-:|
-| Users, roles, settings | ✅ | — | — | — |
-| Assets CRUD, categories, vendors | ✅ | ✅ | read | own only |
-| Employees | ✅ | ✅ | ✅ | self |
-| Assign / return | ✅ | ✅ | read | acknowledge own |
-| Maintenance | ✅ | ✅ | — | raise for own asset |
-| Asset requests | ✅ approve | ✅ approve | read | create / cancel own |
-| Exit clearance | ✅ | ✅ | ✅ initiate / complete | — |
-| Reports & exports | ✅ | ✅ | ✅ | — |
-| Audit log | ✅ | read | — | — |
+**Only IT and HR staff sign in.** Employees are records that assets are assigned to; anything an
+employee confirms (receiving assets, asking for equipment) is recorded by staff on their behalf:
+handover acknowledgements store how it was confirmed (signed form, email, in person) and who
+recorded it, and asset requests store who logged them.
+
+| Permission area | Super Admin | IT Administrator | HR |
+|---|:-:|:-:|:-:|
+| Users, roles, settings | ✅ | — | — |
+| Assets CRUD, master data | ✅ | ✅ | read |
+| Employees | ✅ | ✅ | ✅ |
+| Assign / record acknowledgement / return | ✅ | ✅ | ✅ |
+| Maintenance | ✅ | ✅ | read |
+| Asset requests | ✅ log + approve | ✅ log + approve | log |
+| Exit clearance | ✅ | ✅ | ✅ |
+| Reports & exports | ✅ | ✅ | ✅ |
+| Audit log | ✅ | read | — |
+
+Defaults are seeded from `DEFAULT_ROLE_PERMISSIONS` and can be changed in Settings → Roles.
 
 ## 3. Data model (ER diagram)
 
@@ -124,7 +136,6 @@ asset-management/
 │  │  │  ├─ my-assets/       # employee self-service
 │  │  │  └─ settings/        # users, roles, categories, departments, branches, vendors
 │  │  ├─ api/
-│  │  │  ├─ auth/[...nextauth]/
 │  │  │  ├─ export/[report]/ # CSV / XLSX / PDF
 │  │  │  ├─ upload/
 │  │  │  └─ cron/daily/
@@ -135,15 +146,18 @@ asset-management/
 │  │  └─ shared/             # data table, status badges, empty states
 │  ├─ features/<module>/     # per-module actions.ts, queries.ts, schemas.ts, components
 │  ├─ lib/
-│  │  ├─ auth/               # Auth.js config, permissions, guards
-│  │  ├─ db.ts               # Prisma singleton
+│  │  ├─ auth/               # session.ts (cookie), dal.ts (guards), permissions.ts
+│  │  ├─ db.ts               # Prisma client (lazy, pooled)
+│  │  ├─ action.ts           # typed results + error mapping for server actions
 │  │  ├─ audit.ts
-│  │  ├─ storage.ts          # Supabase Storage wrapper
-│  │  └─ utils.ts
-│  ├─ auth.ts                # Auth.js entry
-│  └─ middleware.ts          # redirects unauthenticated users
-├─ .env.example
-└─ vercel.json               # cron schedule
+│  │  ├─ codes.ts            # AST-000001 style sequential codes
+│  │  ├─ storage.ts          # Supabase Storage wrapper (validation, signed URLs)
+│  │  └─ labels.ts           # enum labels and badge colours
+│  ├─ generated/prisma/      # generated client (git-ignored)
+│  └─ proxy.ts               # Next 16 "middleware": redirects signed-out users
+├─ scripts/vercel-build.mjs  # runs migrations on production deploys only
+├─ prisma.config.ts
+└─ .env.example
 ```
 
 ## 5. Delivery phases
