@@ -152,3 +152,28 @@ describe("email inputs are trimmed before validation", () => {
     expect(MASTER.vendors.schema.safeParse({ name: "Acme", email: "nope" }).success).toBe(false);
   });
 });
+
+describe("pgConfig (Supabase-friendly SSL)", () => {
+  it("encrypts without CA verification for sslmode=require, and strips the URL param", async () => {
+    const { pgConfig } = await import("@/lib/pg-config");
+    const c = pgConfig("postgresql://u:p@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?sslmode=require", { max: 5 });
+    expect(c.ssl).toEqual({ rejectUnauthorized: false });
+    expect(c.connectionString).not.toContain("sslmode");
+    expect(c.max).toBe(5);
+  });
+  it("verifies against DATABASE_CA_CERT when provided", async () => {
+    const { pgConfig } = await import("@/lib/pg-config");
+    process.env.DATABASE_CA_CERT = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----";
+    try {
+      const c = pgConfig("postgresql://u:p@host:5432/db?sslmode=require");
+      expect(c.ssl).toEqual({ ca: "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----", rejectUnauthorized: true });
+    } finally {
+      delete process.env.DATABASE_CA_CERT;
+    }
+  });
+  it("leaves local and verify-full connections alone", async () => {
+    const { pgConfig } = await import("@/lib/pg-config");
+    expect(pgConfig("postgres://postgres:postgres@localhost:51214/db?sslmode=disable").ssl).toBeUndefined();
+    expect(pgConfig("postgres://u:p@h/db?sslmode=verify-full").ssl).toBeUndefined();
+  });
+});

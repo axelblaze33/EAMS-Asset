@@ -1,6 +1,7 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { pgConfig } from "@/lib/pg-config";
 
 // One client per server instance. In dev, hot reload would otherwise open a new
 // pool on every edit. On Vercel, DATABASE_URL should be the pooled (pgbouncer /
@@ -18,7 +19,7 @@ function getClient() {
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set. Copy .env.example to .env and fill it in.");
   }
-  const adapter = new PrismaPg({ connectionString, max: Number(process.env.DB_POOL_MAX ?? 5) });
+  const adapter = new PrismaPg(pgConfig(connectionString, { max: Number(process.env.DB_POOL_MAX ?? 5) }));
   globalForPrisma.prisma = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],

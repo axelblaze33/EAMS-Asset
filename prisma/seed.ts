@@ -20,9 +20,10 @@ import {
   type Permission,
   type SystemRole,
 } from "../src/lib/auth/permissions";
+import { pgConfig } from "../src/lib/pg-config";
 
 const db = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }),
+  adapter: new PrismaPg(pgConfig(process.env.DIRECT_URL ?? process.env.DATABASE_URL!)),
 });
 
 const ROLE_META: Record<SystemRole, { name: string; description: string }> = {
