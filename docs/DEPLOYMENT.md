@@ -7,7 +7,8 @@ seed roles, permissions and the first Super Admin automatically.
 ## 1. Create the Supabase project
 
 1. <https://supabase.com> → **New project**. Pick the region closest to your users
-   (e.g. **South Asia (Mumbai)**) and save the database password.
+   (e.g. **South Asia (Mumbai)**) and save the database password. `regions` in `vercel.json` must
+   match it (`bom1` is Mumbai); otherwise every database query crosses between regions.
 2. Click **Connect** at the top of the project page and copy two connection strings:
    - **Transaction pooler** (port `6543`) → `DATABASE_URL`
    - **Session pooler** (port `5432`) → `DIRECT_URL`
@@ -99,6 +100,7 @@ reminder is sent once (de-duplicated), so re-running is safe.
 | Build fails: `Set SEED_ADMIN_PASSWORD` | The first deploy needs `SEED_ADMIN_PASSWORD` until the Super Admin exists. |
 | `self-signed certificate in certificate chain` | The URL uses `sslmode=verify-full`, or `DATABASE_CA_CERT` holds the wrong certificate. Use `sslmode=require`, or re-download the CA from Supabase. |
 | `too many connections` / timeouts under load | `DATABASE_URL` must be the transaction pooler (6543); keep `DB_POOL_MAX` at 5 or lower. |
+| Signed-in pages are slow but `/login` is fast | Functions may be running far from the database. Check the `X-Vercel-Id` response header on `/api/cron/daily`: `bom1::iad1::…` means entered in Mumbai, ran in US East. Set `regions` in `vercel.json` to the Supabase region and redeploy. |
 | `P1001 Can't reach database server` at runtime | Wrong host/port, or the Supabase project is paused (free projects pause after a week without activity). |
 | Everyone is signed out after a deploy | `SESSION_SECRET` changed. Keep it fixed. |
 | "File storage is not configured" | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are missing in Vercel. |
