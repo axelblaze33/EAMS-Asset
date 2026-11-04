@@ -4,7 +4,7 @@ import { bookValue } from "@/lib/depreciation";
 import { enumParam, hrefWith, parseList } from "@/lib/list-params";
 import { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { assetSchema, parseSpecString } from "@/features/assets/schemas";
-import { assignSchema, acknowledgementSchema, returnSchema } from "@/features/assignments/schemas";
+import { accessoriesSchema, assignSchema, acknowledgementSchema, returnSchema, sameAccessories } from "@/features/assignments/schemas";
 import { employeeSchema } from "@/features/employees/schemas";
 import { categoryIcon } from "@/components/shared/category-icon";
 import { Headphones, Package, Smartphone } from "lucide-react";
@@ -123,6 +123,20 @@ describe("assignment validation", () => {
   it("requires a known acknowledgement method", () => {
     expect(acknowledgementSchema.safeParse({ assignmentIds: ["x"], method: "SIGNED_FORM", acknowledgedOn: "2026-01-01" }).success).toBe(true);
     expect(acknowledgementSchema.safeParse({ assignmentIds: ["x"], method: "TELEPATHY", acknowledgedOn: "2026-01-01" }).success).toBe(false);
+  });
+  it("trims edited accessories and allows clearing them", () => {
+    expect(accessoriesSchema.parse({ items: [{ assignmentId: "x", accessories: [" Mouse "] }] }).items[0]!.accessories).toEqual(["Mouse"]);
+    expect(accessoriesSchema.safeParse({ items: [{ assignmentId: "x", accessories: [] }] }).success).toBe(true);
+    expect(accessoriesSchema.safeParse({ items: [{ assignmentId: "x", accessories: ["   "] }] }).success).toBe(false);
+  });
+  it("rejects editing the same assignment twice in one save", () => {
+    const edit = { assignmentId: "x", accessories: ["Mouse"] };
+    expect(accessoriesSchema.safeParse({ items: [edit, edit] }).success).toBe(false);
+  });
+  it("compares accessories regardless of order", () => {
+    expect(sameAccessories(["Charger", "Mouse"], ["Mouse", "Charger"])).toBe(true);
+    expect(sameAccessories(["Charger"], ["Charger", "Mouse"])).toBe(false);
+    expect(sameAccessories(["Charger"], ["Mouse"])).toBe(false);
   });
 });
 

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { CheckCircle2, Clock, FileDown, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/layout/page-header";
 import { CategoryIcon } from "@/components/shared/category-icon";
@@ -14,6 +14,7 @@ import { ACKNOWLEDGEMENT, ACKNOWLEDGEMENT_METHOD, ASSET_CONDITION } from "@/lib/
 import { toDateInput, todayUtc } from "@/lib/dates";
 import { isStorageConfigured } from "@/lib/storage";
 import { getHandover } from "@/features/assignments/queries";
+import { EditAccessories } from "@/features/assignments/edit-accessories";
 import { HandoverFiles } from "@/features/assignments/handover-files";
 import { RecordAcknowledgement } from "@/features/assignments/record-acknowledgement";
 
@@ -26,7 +27,8 @@ export default async function HandoverPage({ params }: PageProps<"/assignments/h
   if (!h) notFound();
 
   const acked = h.items.filter((i) => i.acknowledgement === "ACKNOWLEDGED").length;
-  const pending = h.items.filter((i) => i.status === "ACTIVE" && i.acknowledgement === "PENDING");
+  const active = h.items.filter((i) => i.status === "ACTIVE");
+  const pending = active.filter((i) => i.acknowledgement === "PENDING");
   const lastAck = h.items.filter((i) => i.acknowledgedAt).sort((a, b) => b.acknowledgedAt!.getTime() - a.acknowledgedAt!.getTime())[0];
   const docs = h.items.flatMap((i) => i.documents.filter((d) => d.type === "HANDOVER"));
 
@@ -80,6 +82,19 @@ export default async function HandoverPage({ params }: PageProps<"/assignments/h
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Assets</CardTitle>
+            {active.length > 0 && hasPermission(user, "assignment:create") && (
+              <CardAction>
+                <EditAccessories
+                  items={active.map((i) => ({
+                    id: i.id,
+                    label: `${i.asset.assetCode} · ${i.asset.name}`,
+                    categoryName: i.asset.category.name,
+                    accessories: i.accessories,
+                    acknowledged: i.acknowledgement === "ACKNOWLEDGED",
+                  }))}
+                />
+              </CardAction>
+            )}
           </CardHeader>
           <CardContent className="px-0">
             <Table>

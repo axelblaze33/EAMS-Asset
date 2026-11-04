@@ -60,6 +60,24 @@ export const assignSchema = z
   });
 export type AssignInput = z.input<typeof assignSchema>;
 
+export const accessoriesSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        assignmentId: z.string().min(1),
+        accessories: z.array(accessory).max(20),
+      }),
+    )
+    .min(1)
+    .max(25)
+    .refine((v) => new Set(v.map((i) => i.assignmentId)).size === v.length, "The same assignment was selected twice"),
+});
+
+/** Same accessories, ignoring order. */
+export function sameAccessories(a: string[], b: string[]) {
+  return a.length === b.length && a.every((x) => b.includes(x));
+}
+
 export const returnSchema = z.object({
   assignmentId: z.string().min(1),
   returnedAt: requiredDate,

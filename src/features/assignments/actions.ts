@@ -12,7 +12,7 @@ import { todayUtc } from "@/lib/dates";
 import { ActionError, ok, runAction, type ActionResult } from "@/lib/action";
 import { ACKNOWLEDGEMENT_METHOD, ASSET_STATUS } from "@/lib/labels";
 import { UPLOAD_LIMITS, verifyStagedFiles } from "@/lib/storage";
-import { acknowledgementSchema, assignSchema, returnSchema, type AssignInput, type ReturnInput } from "./schemas";
+import { accessoriesSchema, acknowledgementSchema, assignSchema, returnSchema, sameAccessories, type AssignInput, type ReturnInput } from "./schemas";
 
 const TX = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 } as const;
 
@@ -264,6 +264,50 @@ export async function recordAcknowledgement(input: z.input<typeof acknowledgemen
 
     refresh();
     return ok(undefined, data.assignmentIds.length === 1 ? "Acknowledgement recorded" : `${data.assignmentIds.length} acknowledgements recorded`);
+  });
+}
+
+/**
+ * Corrects the accessories on assets still out with the employee. Returned
+ * assignments stay as they were: their return was checked against that list.
+ */
+export async function updateHandoverAccessories(input: z.input<typeof accessoriesSchema>): Promise<ActionResult> {
+  return runAction(async () => {
+    const actor = await authorize("assignment:create");
+    const data = accessoriesSchema.parse(input);
+
+    await db.$transaction(async (tx) => {
+      const rows = await tx.assetAssignment.findMany({
+        where: { id: { in: data.items.map((i) => i.assignmentId) }, status: "ACTIVE" },
+        select: { id: true, accessories: true, employee: { select: { fullName: true } }, asset: { select: { id: true, assetCode: true } } },
+      });
+      if (rows.length !== data.items.length) throw new ActionError("Some of these assets were already returned. Refresh and try again.");
+      const byId = new Map(rows.map((r) => [r.id, r]));
+
+      for (const item of data.items) {
+        const row = byId.get(item.assignmentId)!;
+        const accessories = [...new Set(item.accessories)];
+        if (sameAccessories(accessories, row.accessories)) continue;
+
+        const updated = await tx.assetAssignment.updateMany({ where: { id: row.id, status: "ACTIVE" }, data: { accessories } });
+        if (updated.count !== 1) throw new ActionError(`${row.asset.assetCode} has already been returned.`);
+        await writeAudit(
+          {
+            actorId: actor.id,
+            action: "assignment.accessories_update",
+            entityType: "Asset",
+            entityId: row.asset.id,
+            summary: `Updated accessories for ${row.asset.assetCode} held by ${row.employee.fullName}`,
+            before: { accessories: row.accessories },
+            after: { accessories },
+          },
+          tx,
+        );
+      }
+    }, TX);
+
+    refresh();
+    return ok(undefined, "Accessories updated");
   });
 }
 
