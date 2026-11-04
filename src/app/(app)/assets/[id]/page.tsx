@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { differenceInCalendarDays, format, formatDistanceToNow } from "date-fns";
-import { Activity, ArrowRightLeft, FileText, History, ImageOff, Pencil, Printer, QrCode, Undo2, UserRound, Wrench } from "lucide-react";
+import { Activity, ArrowRightLeft, FileText, History, ImageOff, KeyRound, Pencil, Printer, QrCode, Undo2, UserRound, Wrench } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,6 +16,9 @@ import { cn } from "@/lib/utils";
 import { getAsset, getAssetActivity } from "@/features/assets/queries";
 import { assetQrSvg } from "@/features/assets/qr";
 import { AssetDocuments } from "@/features/assets/asset-documents";
+import { AssetPasswords } from "@/features/credentials/asset-passwords";
+import { listCredentials } from "@/features/credentials/queries";
+import { isSecretBoxConfigured } from "@/lib/secret-box";
 import { DeleteAssetButton, RestoreAssetButton } from "@/features/assets/asset-actions";
 
 export const metadata = { title: "Asset" };
@@ -30,10 +33,12 @@ export default async function AssetPage({ params }: PageProps<"/assets/[id]">) {
 
   const storageReady = isStorageConfigured();
   const image = asset.documents.find((doc) => doc.type === "ASSET_IMAGE");
-  const [activity, qr, imageUrl] = await Promise.all([
+  const canSeePasswords = hasPermission(user, "credential:read");
+  const [activity, qr, imageUrl, credentials] = await Promise.all([
     getAssetActivity(asset.id),
     assetQrSvg(asset.id),
     image && storageReady ? signedUrl(image.storagePath, 3600).catch(() => null) : null,
+    canSeePasswords ? listCredentials(asset.id) : [],
   ]);
 
   const current = asset.assignments.find((a) => a.status === "ACTIVE");
@@ -279,6 +284,25 @@ export default async function AssetPage({ params }: PageProps<"/assets/[id]">) {
               />
             </CardContent>
           </Card>
+
+          {canSeePasswords && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <KeyRound className="size-4" />
+                  Passwords ({credentials.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AssetPasswords
+                  assetId={asset.id}
+                  entries={credentials}
+                  canManage={hasPermission(user, "credential:manage") && !asset.deletedAt}
+                  enabled={isSecretBoxConfigured()}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>

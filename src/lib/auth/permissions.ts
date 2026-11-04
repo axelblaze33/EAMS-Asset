@@ -19,6 +19,9 @@ export const PERMISSIONS = {
   "asset:update": "Edit assets",
   "asset:delete": "Delete (archive) assets",
   "asset:import": "Bulk import assets",
+  // Device passwords (encrypted; every reveal is audited)
+  "credential:read": "Reveal saved device passwords and their history",
+  "credential:manage": "Add, change and remove saved device passwords",
   // Employees
   "employee:read": "View all employees",
   "employee:create": "Add employees",

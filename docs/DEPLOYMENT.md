@@ -52,6 +52,7 @@ an end-to-end smoke test against a throwaway Postgres on every push.
    | `SEED_ADMIN_EMAIL` | the first Super Admin's email |
    | `SEED_ADMIN_NAME` | their name |
    | `SEED_ADMIN_PASSWORD` | a strong temporary password (10+ characters) |
+   | `CREDENTIALS_ENCRYPTION_KEY` | `openssl rand -base64 32`. Encrypts saved device passwords; **keep a copy in your password manager**: if it is lost or changed, saved passwords can't be decrypted |
    | `DATABASE_CA_CERT` | optional, see step 1.5 |
    | `DB_POOL_MAX` | `5` |
 
@@ -106,4 +107,6 @@ reminder is sent once (de-duplicated), so re-running is safe.
 | QR labels point at a `*.vercel.app` URL | Set `APP_URL` to your custom domain and reprint. |
 | A user can't sign in, "Too many failed attempts" | The account locks for 15 minutes after 5 failures. A Super Admin can reset the password to clear it. |
 | Reminders never appear | `CRON_SECRET` missing in Vercel, or the cron job is disabled under Settings → Cron Jobs. |
+| "Password storage is off" on asset pages | `CREDENTIALS_ENCRYPTION_KEY` is missing in Vercel. |
+| "This password can't be decrypted" | `CREDENTIALS_ENCRYPTION_KEY` was changed. Restore the original key. |
 | Lost the only Super Admin password | Set `SEED_ADMIN_EMAIL` to a new address and `SEED_ADMIN_PASSWORD` in Vercel, then redeploy: the seed creates another Super Admin. |

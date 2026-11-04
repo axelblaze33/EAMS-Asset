@@ -114,3 +114,63 @@ describe("Excel export", () => {
     expect(ws.getRow(5).values).toEqual([, "AST-000001", 98500]);
   });
 });
+
+describe("device password encryption", () => {
+  const KEY = Buffer.alloc(32, 7).toString("base64");
+
+  it("round-trips, uses a fresh IV every time, and never stores plaintext", async () => {
+    process.env.CREDENTIALS_ENCRYPTION_KEY = KEY;
+    const { seal, open } = await import("@/lib/secret-box");
+    const a = seal("Laptop#Pass2026");
+    const b = seal("Laptop#Pass2026");
+    expect(a).not.toContain("Laptop");
+    expect(a).not.toBe(b);
+    expect(open(a)).toBe("Laptop#Pass2026");
+  });
+
+  it("detects tampering and the wrong key", async () => {
+    process.env.CREDENTIALS_ENCRYPTION_KEY = KEY;
+    const { seal, open } = await import("@/lib/secret-box");
+    const sealed = seal("secret");
+    const parts = sealed.split(".");
+    const flipped = Buffer.from(parts[3]!, "base64url");
+    flipped[0]! ^= 1;
+    expect(() => open([parts[0], parts[1], parts[2], flipped.toString("base64url")].join("."))).toThrow();
+    process.env.CREDENTIALS_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+    expect(() => open(sealed)).toThrow();
+  });
+
+  it("is off without a key and rejects a malformed key", async () => {
+    const { isSecretBoxConfigured } = await import("@/lib/secret-box");
+    delete process.env.CREDENTIALS_ENCRYPTION_KEY;
+    expect(isSecretBoxConfigured()).toBe(false);
+    process.env.CREDENTIALS_ENCRYPTION_KEY = "too-short";
+    expect(isSecretBoxConfigured()).toBe(false);
+    delete process.env.CREDENTIALS_ENCRYPTION_KEY;
+  });
+
+  it("never puts password values into audit entries", () => {
+    const src = readFileSync(join(SRC, "features/credentials/actions.ts"), "utf8");
+    // Argument list of each writeAudit(...) call, up to its matching ")".
+    const calls = src
+      .split("writeAudit(")
+      .slice(1)
+      .map((rest) => {
+        let depth = 1;
+        let i = 0;
+        for (; i < rest.length && depth > 0; i++) {
+          if (rest[i] === "(") depth++;
+          else if (rest[i] === ")") depth--;
+        }
+        return rest.slice(0, i - 1);
+      });
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    for (const call of calls) {
+      // Only evaluated code matters: the ${...} expressions inside template
+      // strings, plus everything outside string literals.
+      const interpolated = [...call.matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]).join(" ");
+      const outsideStrings = call.replace(/`[^`]*`/g, "").replace(/"[^"]*"/g, "");
+      expect(`${outsideStrings} ${interpolated}`, call).not.toMatch(/\bpassword\b|\bsecret\b|\bseal\(|\bopen\(|\bsealed\b/);
+    }
+  });
+});

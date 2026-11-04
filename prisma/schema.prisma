@@ -177,17 +177,20 @@ model User {
 
   notifications            Notification[]
   auditLogs                AuditLog[]
-  assetsCreated            Asset[]                 @relation("AssetCreatedBy")
-  assignmentsMade          AssetAssignment[]       @relation("AssignedBy")
-  acknowledgementsRecorded AssetAssignment[]       @relation("AcknowledgementRecordedBy")
-  returnsProcessed         AssetReturn[]           @relation("ReturnProcessedBy")
-  requestsReviewed         AssetRequest[]          @relation("RequestReviewedBy")
-  requestsLogged           AssetRequest[]          @relation("RequestLoggedBy")
-  maintenanceAssigned      MaintenanceRequest[]    @relation("MaintenanceAssignee")
-  maintenanceReported      MaintenanceRequest[]    @relation("MaintenanceReporter")
+  assetsCreated            Asset[]                  @relation("AssetCreatedBy")
+  assignmentsMade          AssetAssignment[]        @relation("AssignedBy")
+  acknowledgementsRecorded AssetAssignment[]        @relation("AcknowledgementRecordedBy")
+  returnsProcessed         AssetReturn[]            @relation("ReturnProcessedBy")
+  requestsReviewed         AssetRequest[]           @relation("RequestReviewedBy")
+  requestsLogged           AssetRequest[]           @relation("RequestLoggedBy")
+  maintenanceAssigned      MaintenanceRequest[]     @relation("MaintenanceAssignee")
+  maintenanceReported      MaintenanceRequest[]     @relation("MaintenanceReporter")
   documentsUploaded        AssetDocument[]
-  clearancesInitiated      EmployeeExitClearance[] @relation("ClearanceInitiatedBy")
-  clearancesCompleted      EmployeeExitClearance[] @relation("ClearanceCompletedBy")
+  clearancesInitiated      EmployeeExitClearance[]  @relation("ClearanceInitiatedBy")
+  clearancesCompleted      EmployeeExitClearance[]  @relation("ClearanceCompletedBy")
+  credentialsCreated       AssetCredential[]        @relation("CredentialCreatedBy")
+  credentialsUpdated       AssetCredential[]        @relation("CredentialUpdatedBy")
+  credentialChanges        AssetCredentialHistory[] @relation("CredentialChangedBy")
 
   @@index([roleId])
   @@map("users")
@@ -339,6 +342,7 @@ model Asset {
   maintenance    MaintenanceRequest[]
   documents      AssetDocument[]
   clearanceItems ClearanceItem[]
+  credentials    AssetCredential[]
 
   @@index([status])
   @@index([categoryId])
@@ -583,4 +587,53 @@ model Setting {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("settings")
+}
+
+// ─── Device passwords ─────────────────────────────────────────────────────────
+// Secrets are AES-256-GCM encrypted by the app (src/lib/secret-box.ts) with
+// CREDENTIALS_ENCRYPTION_KEY; the database never sees a plaintext password.
+
+enum CredentialEvent {
+  CREATED
+  UPDATED
+  DELETED
+}
+
+model AssetCredential {
+  id          String                   @id @default(cuid())
+  assetId     String                   @map("asset_id")
+  asset       Asset                    @relation(fields: [assetId], references: [id])
+  label       String // e.g. "Windows login", "BIOS"
+  username    String?
+  secret      String // encrypted, see secret-box.ts
+  notes       String?
+  createdById String?                  @map("created_by_id")
+  createdBy   User?                    @relation("CredentialCreatedBy", fields: [createdById], references: [id])
+  updatedById String?                  @map("updated_by_id")
+  updatedBy   User?                    @relation("CredentialUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime?                @map("deleted_at") @db.Timestamptz
+  history     AssetCredentialHistory[]
+
+  @@index([assetId])
+  @@map("asset_credentials")
+}
+
+// One row per change, holding the value that change set, so earlier
+// passwords (and who set them) can be looked up later.
+model AssetCredentialHistory {
+  id           String          @id @default(cuid())
+  credentialId String          @map("credential_id")
+  credential   AssetCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  event        CredentialEvent
+  username     String?
+  secret       String? // encrypted value set by this change; null when deleted
+  reason       String?
+  changedById  String?         @map("changed_by_id")
+  changedBy    User?           @relation("CredentialChangedBy", fields: [changedById], references: [id])
+  changedAt    DateTime        @default(now()) @map("changed_at") @db.Timestamptz
+
+  @@index([credentialId, changedAt])
+  @@map("asset_credential_history")
 }

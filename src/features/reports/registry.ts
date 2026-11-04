@@ -542,6 +542,11 @@ const ASSET_EVENT: Record<string, string> = {
   "maintenance.cancelled": "Repair cancelled",
   "clearance.item_missing": "Missing at exit",
   "clearance.item_waived": "Written off at exit",
+  "credential.create": "Password saved",
+  "credential.change": "Password changed",
+  "credential.update": "Password entry edited",
+  "credential.delete": "Password removed",
+  "credential.reveal": "Password viewed",
 };
 
 const assetHistory = define({

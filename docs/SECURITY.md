@@ -14,11 +14,15 @@ What EAMS does to protect asset and employee data, how it's checked, and the kno
 | Database | Prisma parameterises queries; the few raw SQL queries use tagged templates. Critical flows (assign, return, clearance, maintenance) run in serializable transactions with conditional updates; a partial unique index makes double-assignment impossible |
 | Files | Private Supabase bucket; uploads go browser → storage via one-time signed URLs; the server checks owner path, size and magic bytes before recording a file, and deletes mismatches; downloads use 5-minute signed URLs |
 | Exports | CSV cells starting with `= + - @` are prefixed to stop spreadsheet formula injection; every export is written to the audit log |
+| Device passwords | Stored AES-256-GCM encrypted (`src/lib/secret-box.ts`, key in `CREDENTIALS_ENCRYPTION_KEY`, never in the database); fresh IV per value; tampering detected. Hidden by default, revealed one at a time on request and re-hidden after 30 s. Separate `credential:read` / `credential:manage` permissions (HR has neither by default). Every reveal, copy, change and removal is audited without the value. History keeps every previous value, encrypted. Never included in exports or reports |
 | Audit | Append-only audit log of logins, edits (with before/after), assignments, returns, approvals, clearances and exports, with IP address |
 | Headers | `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`, strict referrer policy, permissions policy, HSTS in production, `X-Powered-By` removed |
 | Secrets | Server-only env vars (no `NEXT_PUBLIC_` secrets); `.env` is git-ignored; cron endpoint requires `CRON_SECRET`, compared in constant time |
 
 ## Known gaps / accepted risks
+
+- **Device-password key rotation is manual.** Changing `CREDENTIALS_ENCRYPTION_KEY` makes saved
+  passwords unreadable; rotating it would need a re-encryption script. Keep the key in a password manager.
 
 - **No IP-based rate limiting.** Lockout is per account. If the app is exposed publicly, add Vercel
   Firewall rate limiting on `/login`.

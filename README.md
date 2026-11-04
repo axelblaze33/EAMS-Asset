@@ -19,6 +19,7 @@ Next.js 16 · TypeScript · Tailwind + shadcn/ui · PostgreSQL + Prisma 7 · Sup
 | 4 | Maintenance, asset requests | ✅ Done |
 | 5 | Reports and Excel / CSV / PDF exports | ✅ Done |
 | 6 | Exit clearance, notifications and daily reminders, audit log, asset history report | ✅ Done |
+| + | Encrypted device passwords per asset, with change history | ✅ Done |
 | 7 | Tests, security hardening, CI, deployment | ✅ Done (deploy: see docs/DEPLOYMENT.md) |
 
 The database schema covered every module from the start; later phases have only needed small, additive migrations.

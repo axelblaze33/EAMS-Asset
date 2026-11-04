@@ -26,6 +26,7 @@ const MODULE_LABEL: Record<string, string> = {
   audit: "System",
   master: "Master data",
   asset: "Assets",
+  credential: "Device passwords",
   employee: "Employees",
   assignment: "Assignments & returns",
   maintenance: "Maintenance",
