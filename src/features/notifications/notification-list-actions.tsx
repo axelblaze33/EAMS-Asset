@@ -28,7 +28,7 @@ export function RunRemindersButton() {
           if (!r.ok) return void toast.error(r.error);
           const c = r.data;
           toast.success("Reminder checks complete", {
-            description: `Warranties ${c.warranty}, due soon ${c.dueSoon}, overdue ${c.overdue}, unacknowledged ${c.unacknowledged}, clearances ${c.clearance}, long repairs ${c.staleRepairs}. Each is only notified once.`,
+            description: `Warranties ${c.warranty}, licenses ${c.licenses}, due soon ${c.dueSoon}, overdue ${c.overdue}, unacknowledged ${c.unacknowledged}, clearances ${c.clearance}, long repairs ${c.staleRepairs}. Each is only notified once.`,
           });
         })
       }

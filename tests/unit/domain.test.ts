@@ -7,7 +7,8 @@ import { assetSchema, parseSpecString } from "@/features/assets/schemas";
 import { accessoriesSchema, assignSchema, acknowledgementSchema, returnSchema, sameAccessories } from "@/features/assignments/schemas";
 import { employeeSchema } from "@/features/employees/schemas";
 import { categoryIcon } from "@/components/shared/category-icon";
-import { Headphones, Package, Smartphone } from "lucide-react";
+import { categoryProfile, withProfileSpecs } from "@/features/assets/category-profiles";
+import { Cable, Cctv, Headphones, Network, Package, ShieldCheck, Smartphone } from "lucide-react";
 
 describe("parseDateInput", () => {
   it("accepts ISO and Indian day-first formats as UTC calendar dates", () => {
@@ -94,6 +95,18 @@ describe("asset validation", () => {
   });
   it("rejects negative costs", () => {
     expect(assetSchema.safeParse({ ...base, purchaseCost: "-5" }).success).toBe(false);
+  });
+  it("parses license details and treats blanks as empty", () => {
+    const v = assetSchema.parse({ ...base, licenseKey: " ABCD-1234 ", licenseSeats: "1,000", licenseExpiry: "2027-03-31" });
+    expect(v.licenseKey).toBe("ABCD-1234");
+    expect(v.licenseSeats).toBe(1000);
+    expect(v.licenseExpiry?.toISOString()).toBe("2027-03-31T00:00:00.000Z");
+    const blank = assetSchema.parse({ ...base, licenseKey: "", licenseSeats: "", licenseExpiry: "" });
+    expect([blank.licenseKey, blank.licenseSeats, blank.licenseExpiry]).toEqual([null, null, null]);
+  });
+  it("rejects fractional or zero license seats", () => {
+    expect(assetSchema.safeParse({ ...base, licenseSeats: "2.5" }).success).toBe(false);
+    expect(assetSchema.safeParse({ ...base, licenseSeats: "0" }).success).toBe(false);
   });
   it("parses specification strings from imports", () => {
     expect(parseSpecString("CPU: i7-1365U; RAM: 16 GB\nNote without colon; URL: http://x:8080")).toEqual([
@@ -189,5 +202,37 @@ describe("pgConfig (Supabase-friendly SSL)", () => {
     const { pgConfig } = await import("@/lib/pg-config");
     expect(pgConfig("postgres://postgres:postgres@localhost:51214/db?sslmode=disable").ssl).toBeUndefined();
     expect(pgConfig("postgres://u:p@h/db?sslmode=verify-full").ssl).toBeUndefined();
+  });
+});
+
+describe("category profiles", () => {
+  it("matches antivirus, switches, cameras and cables by name or code", () => {
+    expect(categoryProfile("Antivirus")?.id).toBe("antivirus");
+    expect(categoryProfile("Antivirus")?.license).toBe(true);
+    expect(categoryProfile("PoE Switch")?.id).toBe("poe-switch");
+    expect(categoryProfile("LAN Switch")?.id).toBe("lan-switch");
+    expect(categoryProfile("CCTV Dome Camera")?.id).toBe("cctv-dome");
+    expect(categoryProfile("CCTV Bullet Camera")?.id).toBe("cctv-bullet");
+    expect(categoryProfile("Cables")?.id).toBe("cable");
+    expect(categoryProfile("Site gear", "CCTV-B")?.id).toBe("cctv-bullet");
+    expect(categoryProfile("Laptop")).toBeNull();
+  });
+  it("adds suggested fields without losing typed values", () => {
+    const dome = categoryProfile("CCTV Dome Camera");
+    const rows = withProfileSpecs([{ key: "Resolution", value: "4 MP" }, { key: "", value: "" }], dome);
+    expect(rows[0]).toEqual({ key: "Resolution", value: "4 MP" });
+    expect(rows.filter((r) => r.key === "Resolution")).toHaveLength(1);
+    expect(rows.find((r) => r.key === "Camera type")?.value).toBe("Dome");
+    // Switching category drops the unused suggestions but keeps filled rows.
+    const cable = withProfileSpecs(rows, categoryProfile("Cables"));
+    expect(cable.some((r) => r.key === "Lens")).toBe(false);
+    expect(cable.some((r) => r.key === "Resolution" && r.value === "4 MP")).toBe(true);
+    expect(cable.some((r) => r.key === "Cable type")).toBe(true);
+  });
+  it("gives the new categories their own icons", () => {
+    expect(categoryIcon("CCTV Bullet Camera")).toBe(Cctv);
+    expect(categoryIcon("PoE Switch")).toBe(Network);
+    expect(categoryIcon("Antivirus")).toBe(ShieldCheck);
+    expect(categoryIcon("Cables")).toBe(Cable);
   });
 });

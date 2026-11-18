@@ -22,6 +22,7 @@ const LABELS: Record<string, string> = {
   assigned: "Assigned",
   damaged: "Damaged",
   warranty: "Warranty",
+  licenses: "Licenses",
   "employee-allocation": "Employee allocation",
   department: "Departments",
   "exit-clearance": "Exit clearance",

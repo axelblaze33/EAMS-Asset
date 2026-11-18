@@ -116,6 +116,7 @@ enum NotificationType {
   REQUEST_PENDING
   REQUEST_UPDATED
   WARRANTY_EXPIRY
+  LICENSE_EXPIRY
   MAINTENANCE_UPDATE
   EXIT_CLEARANCE
   SYSTEM
@@ -324,6 +325,10 @@ model Asset {
   invoiceNumber  String?        @map("invoice_number")
   warrantyStart  DateTime?      @map("warranty_start") @db.Date
   warrantyExpiry DateTime?      @map("warranty_expiry") @db.Date
+  // Software / antivirus licensing. Also usable on hardware (e.g. Windows key).
+  licenseKey     String?        @map("license_key")
+  licenseSeats   Int?           @map("license_seats") // devices / users covered
+  licenseExpiry  DateTime?      @map("license_expiry") @db.Date
   condition      AssetCondition @default(NEW)
   status         AssetStatus    @default(AVAILABLE)
   branchId       String?        @map("branch_id")
@@ -349,6 +354,7 @@ model Asset {
   @@index([branchId])
   @@index([departmentId])
   @@index([warrantyExpiry])
+  @@index([licenseExpiry])
   @@index([deletedAt])
   @@map("assets")
 }

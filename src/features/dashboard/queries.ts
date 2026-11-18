@@ -138,7 +138,7 @@ export async function getAttention(f: Pick<Filters, "department">) {
   const in30 = new Date(today.getTime() + 30 * 86_400_000);
   const staleTicket = new Date(Date.now() - 14 * 86_400_000);
   const emp = f.department ? { departmentId: f.department } : undefined;
-  const [overdue, unacknowledged, pendingRequests, approvedRequests, staleTickets, warranties] = await Promise.all([
+  const [overdue, unacknowledged, pendingRequests, approvedRequests, staleTickets, warranties, licenses] = await Promise.all([
     db.assetAssignment.count({ where: { status: "ACTIVE", expectedReturnAt: { lt: today }, employee: emp } }),
     db.assetAssignment.count({ where: { status: "ACTIVE", acknowledgement: "PENDING", employee: emp } }),
     db.assetRequest.count({ where: { status: "PENDING", employee: emp } }),
@@ -147,6 +147,9 @@ export async function getAttention(f: Pick<Filters, "department">) {
     db.asset.count({
       where: { ...assetScope(f.department), status: { notIn: ["RETIRED", "DISPOSED", "LOST"] }, warrantyExpiry: { gte: today, lte: in30 } },
     }),
+    db.asset.count({
+      where: { ...assetScope(f.department), status: { notIn: ["RETIRED", "DISPOSED", "LOST"] }, licenseExpiry: { gte: today, lte: in30 } },
+    }),
   ]);
-  return { overdue, unacknowledged, pendingRequests, approvedRequests, staleTickets, warranties };
+  return { overdue, unacknowledged, pendingRequests, approvedRequests, staleTickets, warranties, licenses };
 }

@@ -50,6 +50,22 @@ export const assetSchema = z
     invoiceNumber: optionalText(60),
     warrantyStart: optionalDate,
     warrantyExpiry: optionalDate,
+    licenseKey: optionalText(200),
+    licenseSeats: z
+      .union([z.string(), z.number()])
+      .optional()
+      .nullable()
+      .transform((v, ctx) => {
+        const raw = typeof v === "number" ? String(v) : (v ?? "").trim();
+        if (!raw) return null;
+        const n = Number(raw.replace(/,/g, ""));
+        if (!Number.isInteger(n) || n < 1 || n > 1_000_000) {
+          ctx.addIssue({ code: "custom", message: "Enter a whole number of 1 or more" });
+          return z.NEVER;
+        }
+        return n;
+      }),
+    licenseExpiry: optionalDate,
     condition: z.enum(ASSET_CONDITIONS),
     status: z.enum(ASSET_STATUSES),
     branchId: optionalId,
@@ -82,6 +98,9 @@ export type AssetFormValues = {
   invoiceNumber: string;
   warrantyStart: string;
   warrantyExpiry: string;
+  licenseKey: string;
+  licenseSeats: string;
+  licenseExpiry: string;
   condition: (typeof ASSET_CONDITIONS)[number];
   status: (typeof ASSET_STATUSES)[number];
   branchId: string;

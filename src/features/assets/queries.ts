@@ -16,6 +16,7 @@ export function assetFilters(sp: SearchParams) {
     branch: param(sp, "branch"),
     department: param(sp, "department"),
     warranty: enumParam(sp, "warranty", WARRANTY_FILTERS),
+    license: enumParam(sp, "license", WARRANTY_FILTERS),
     archived: param(sp, "archived") === "1",
   };
 }
@@ -28,6 +29,11 @@ export function assetWhere(f: Omit<Filters, "page" | "pageSize" | "skip" | "sort
     : f.warranty === "expired"
       ? { warrantyExpiry: { lt: today } }
       : { warrantyExpiry: { gte: today, lte: new Date(today.getTime() + Number(f.warranty) * 86_400_000) } };
+  const license: Prisma.AssetWhereInput | undefined = !f.license
+    ? undefined
+    : f.license === "expired"
+      ? { licenseExpiry: { lt: today } }
+      : { licenseExpiry: { gte: today, lte: new Date(today.getTime() + Number(f.license) * 86_400_000) } };
 
   return {
     deletedAt: f.archived ? { not: null } : null,
@@ -36,12 +42,14 @@ export function assetWhere(f: Omit<Filters, "page" | "pageSize" | "skip" | "sort
     branchId: f.branch,
     departmentId: f.department,
     ...warranty,
+    ...license,
     ...(f.q && {
       OR: [
         { assetCode: { contains: f.q, mode: "insensitive" } },
         { name: { contains: f.q, mode: "insensitive" } },
         { serialNumber: { contains: f.q, mode: "insensitive" } },
         { assetTag: { contains: f.q, mode: "insensitive" } },
+        { licenseKey: { contains: f.q, mode: "insensitive" } },
         { model: { contains: f.q, mode: "insensitive" } },
         { brand: { contains: f.q, mode: "insensitive" } },
         { category: { name: { contains: f.q, mode: "insensitive" } } },
@@ -98,6 +106,9 @@ export const assetListSelect = {
   invoiceNumber: true,
   warrantyStart: true,
   warrantyExpiry: true,
+  licenseKey: true,
+  licenseSeats: true,
+  licenseExpiry: true,
   specifications: true,
   description: true,
   deletedAt: true,

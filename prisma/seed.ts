@@ -186,6 +186,12 @@ async function seedDemoData() {
     ["Networking Equipment", "NET", 60],
     ["Access Card", "ACC", 60],
     ["Software License", "SWL", 12],
+    ["Antivirus", "AV", 12],
+    ["LAN Switch", "LSW", 60],
+    ["PoE Switch", "POE", 60],
+    ["CCTV Dome Camera", "CCTV-D", 60],
+    ["CCTV Bullet Camera", "CCTV-B", 60],
+    ["Cables", "CBL", 36],
     ["Other", "OTH", 36],
   ] as const;
   const categories = Object.fromEntries(
@@ -282,10 +288,19 @@ async function seedDemoData() {
     { cat: "Printer", brand: "HP", model: "LaserJet Pro MFP 4104fdw", cost: [42000, 48000], vendor: "HP" },
     { cat: "Networking Equipment", brand: "Cisco", model: "Catalyst 1000-24T", cost: [55000, 65000], vendor: "HP" },
     { cat: "Access Card", brand: "HID", model: "iCLASS SE", cost: [450, 600], vendor: "TechCare" },
+    { cat: "Antivirus", brand: "Quick Heal", model: "Seqrite Endpoint Security", cost: [45000, 60000], vendor: "TechCare", specs: { Edition: "Endpoint Security Business" } },
+    { cat: "LAN Switch", brand: "TP-Link", model: "TL-SG3428 24-port", cost: [18000, 24000], vendor: "TechCare", specs: { Ports: "24", "Port speed": "1 Gbps", "Uplink / SFP ports": "4 × SFP", Managed: "Managed" } },
+    { cat: "PoE Switch", brand: "Cisco", model: "CBS250-16P-2G", cost: [28000, 34000], vendor: "TechCare", specs: { Ports: "16", "PoE ports": "16", "PoE budget": "120 W", Managed: "Smart / web-managed" } },
+    { cat: "CCTV Dome Camera", brand: "Hikvision", model: "DS-2CD1143G2-I", cost: [3800, 4600], vendor: "TechCare", specs: { "Camera type": "Dome", Resolution: "4 MP", Lens: "2.8 mm", "Night vision range": "30 m" } },
+    { cat: "CCTV Bullet Camera", brand: "CP Plus", model: "CP-UNC-TA41PL3", cost: [4200, 5200], vendor: "TechCare", specs: { "Camera type": "Bullet", Resolution: "4 MP", Lens: "3.6 mm", "Night vision range": "50 m" } },
+    { cat: "Cables", brand: "D-Link", model: "Cat6 UTP 305 m box", cost: [7500, 9500], vendor: "TechCare", specs: { "Cable type": "Cat6", Length: "305 m", Quantity: "1 box", Connector: "RJ45" } },
   ];
   const plan: [number, number][] = [
     [0, 10], [1, 8], [2, 5], [3, 4], [4, 12], [5, 5], [6, 4], [7, 3], [8, 8], [9, 10], [10, 6], [11, 3], [12, 2], [13, 12],
+    [14, 2], [15, 3], [16, 2], [17, 8], [18, 6], [19, 4],
   ];
+  // Infrastructure stays in place rather than being handed to employees.
+  const infra = new Set<string>(["Printer", "Networking Equipment", "Antivirus", "LAN Switch", "PoE Switch", "CCTV Dome Camera", "CCTV Bullet Camera", "Cables"]);
 
   let seq = 0;
   const assets: { id: string; status: AssetStatus; categoryCat: string; purchaseDate: Date }[] = [];
@@ -295,7 +310,7 @@ async function seedDemoData() {
       seq++;
       const purchaseDate = daysAgo(between(20, 1100));
       const status: AssetStatus =
-        m.cat === "Printer" || m.cat === "Networking Equipment"
+        infra.has(m.cat)
           ? "AVAILABLE"
           : pick<AssetStatus>(["ASSIGNED", "ASSIGNED", "ASSIGNED", "ASSIGNED", "AVAILABLE", "AVAILABLE", "UNDER_MAINTENANCE", "DAMAGED", "RETIRED"]);
       const condition: AssetCondition =
@@ -319,6 +334,12 @@ async function seedDemoData() {
           status,
           branchId: pick(branches).id,
           specifications: m.specs,
+          ...(m.cat === "Antivirus" && {
+            licenseKey: `SEQ-${(1e12 + seq * 98_765_431).toString(36).toUpperCase().match(/.{1,4}/g)!.join("-")}`,
+            licenseSeats: 50,
+            // One renews soon so the reminder and dashboard have something to show.
+            licenseExpiry: n === 0 ? daysAgo(-20) : addMonths(purchaseDate, 12 * Math.ceil((Date.now() - purchaseDate.getTime()) / (365 * 86_400_000))),
+          }),
           createdById: itAdmin.id,
           createdAt: purchaseDate,
         },

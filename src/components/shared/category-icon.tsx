@@ -1,5 +1,7 @@
 import { createElement } from "react";
 import {
+  Cable,
+  Cctv,
   Headphones,
   IdCard,
   KeyRound,
@@ -11,6 +13,7 @@ import {
   Package,
   Printer,
   Server,
+  ShieldCheck,
   Smartphone,
   Tablet,
   type LucideIcon,
@@ -29,7 +32,10 @@ const RULES: [RegExp, LucideIcon][] = [
   [/head(phone|set)|earphone|audio/i, Headphones],
   [/phone|mobile/i, Smartphone],
   [/printer|scanner/i, Printer],
-  [/network|router|switch|firewall/i, Network],
+  [/cctv|camera|dome|bullet|nvr|dvr/i, Cctv],
+  [/anti-?virus|endpoint/i, ShieldCheck],
+  [/network|router|switch|firewall|\bpoe\b/i, Network],
+  [/cable|cord|wire/i, Cable],
   [/card|badge|id\b/i, IdCard],
   [/licen[cs]e|software|subscription/i, KeyRound],
 ];

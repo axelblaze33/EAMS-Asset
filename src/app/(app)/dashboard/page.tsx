@@ -4,6 +4,7 @@ import {
   Archive,
   CalendarClock,
   FileSignature,
+  KeyRound,
   ShieldAlert,
   Boxes,
   CircleAlert,
@@ -100,6 +101,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           { show: hasPermission(user, "request:read"), count: attention.approvedRequests, label: "approved requests to fulfil", href: "/requests?view=approved", icon: PackageCheck, tone: "info" },
           { show: hasPermission(user, "maintenance:read"), count: attention.staleTickets, label: "repairs open over 14 days", href: "/maintenance", icon: Wrench, tone: "warning" },
           { show: canAssets, count: attention.warranties, label: "warranties expiring in 30 days", href: "/assets?warranty=30", icon: ShieldAlert, tone: "info" },
+          { show: canAssets, count: attention.licenses, label: "licenses expiring in 30 days", href: "/assets?license=30", icon: KeyRound, tone: "warning" },
         ]}
       />
 

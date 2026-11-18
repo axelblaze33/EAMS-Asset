@@ -12,7 +12,7 @@ const DAY = 86_400_000;
  */
 export async function runDailyChecks() {
   const today = todayUtc();
-  const counts = { warranty: 0, dueSoon: 0, overdue: 0, unacknowledged: 0, clearance: 0, staleRepairs: 0 };
+  const counts = { warranty: 0, licenses: 0, dueSoon: 0, overdue: 0, unacknowledged: 0, clearance: 0, staleRepairs: 0 };
 
   await db.$transaction(
     async (tx) => {
@@ -38,6 +38,26 @@ export async function runDailyChecks() {
         });
       }
       counts.warranty = warranties.length;
+
+      // Antivirus / software licenses: one reminder 30 days out, one on expiry.
+      const licenses = await tx.asset.findMany({
+        where: { deletedAt: null, status: { notIn: ["RETIRED", "DISPOSED", "LOST"] }, licenseExpiry: { lte: new Date(today.getTime() + 30 * DAY) } },
+        select: { id: true, assetCode: true, name: true, licenseExpiry: true },
+      });
+      for (const a of licenses) {
+        const expiry = a.licenseExpiry!;
+        const expired = expiry < today;
+        // Skip licenses that lapsed long ago; they were already flagged.
+        if (expired && today.getTime() - expiry.getTime() > 7 * DAY) continue;
+        await notifyUsers(tx, itTeam, {
+          type: "LICENSE_EXPIRY",
+          title: `${expired ? "License expired" : "License ending"}: ${a.assetCode}`,
+          message: `${a.name}: license ${expired ? "expired" : "ends"} ${format(expiry, "d MMM yyyy")}. Renew it and update the expiry date.`,
+          link: `/assets/${a.id}`,
+          dedupeKey: `license${expired ? "expired" : "30"}:${a.id}:${expiry.toISOString().slice(0, 10)}`,
+        });
+        counts.licenses++;
+      }
 
       const active = await tx.assetAssignment.findMany({
         where: { status: "ACTIVE" },

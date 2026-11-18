@@ -1,10 +1,10 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ComboboxField, Field, SelectField, applyFieldErrors, type Option } from "@/components/shared/form-fields";
 import { ASSET_CONDITION, ASSET_STATUS } from "@/lib/labels";
 import { saveAsset } from "./actions";
+import { categoryProfile, withProfileSpecs } from "./category-profiles";
 import { ASSET_CONDITIONS, MANUAL_STATUSES, assetSchema, type AssetFormValues } from "./schemas";
 
 export function AssetForm({
@@ -32,6 +33,21 @@ export function AssetForm({
   const form = useForm<AssetFormValues>({ resolver: zodResolver(assetSchema) as never, defaultValues: defaults });
   const specs = useFieldArray({ control: form.control, name: "specifications" });
   const errors = form.formState.errors;
+
+  const categoryId = useWatch({ control: form.control, name: "categoryId" });
+  const specRows = useWatch({ control: form.control, name: "specifications" });
+  const profileFor = (catId: string) => categoryProfile(options.categories.find((c) => c.value === catId)?.label);
+  const profile = profileFor(categoryId);
+  const hasLicenseValues = Boolean(defaults.licenseKey || defaults.licenseSeats || defaults.licenseExpiry);
+  const [licenseOpen, setLicenseOpen] = useState(hasLicenseValues);
+  const showLicense = licenseOpen || Boolean(profile?.license);
+
+  /** Category picked by the user: suggest that kind of asset's fields. */
+  function onCategoryChange(next: string, set: (v: string) => void) {
+    set(next);
+    specs.replace(withProfileSpecs(form.getValues("specifications"), profileFor(next)));
+  }
+  const specHint = (key: string | undefined) => profile?.specs.find((f) => f.key.toLowerCase() === (key ?? "").trim().toLowerCase());
 
   function onSubmit() {
     startTransition(async () => {
@@ -57,7 +73,10 @@ export function AssetForm({
         control={form.control}
         name={name}
         render={({ field }) => (
-          <ComboboxField value={field.value} onChange={field.onChange} options={opts} placeholder={`Select ${label.replace(" (optional)", "").toLowerCase()}`} invalid={!!errors[name]} allowClear={name !== "categoryId"} />
+          <ComboboxField
+            value={field.value}
+            onChange={name === "categoryId" ? (v: string) => onCategoryChange(v, field.onChange) : field.onChange}
+            options={opts} placeholder={`Select ${label.replace(" (optional)", "").toLowerCase()}`} invalid={!!errors[name]} allowClear={name !== "categoryId"} />
         )}
       />
     </Field>
@@ -126,21 +145,62 @@ export function AssetForm({
         </CardContent>
       </Card>
 
+      {showLicense ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>License</CardTitle>
+            <CardDescription>
+              For antivirus and software subscriptions, or a license key that ships with a device. A reminder goes out 30 days before the license expires.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">{text("licenseKey", "License number / key (optional)", { className: "font-mono", placeholder: "XXXXX-XXXXX-XXXXX-XXXXX", autoComplete: "off" })}</div>
+            {text("licenseSeats", `${profile?.seatsLabel ?? "Seats / devices covered"} (optional)`, { inputMode: "numeric", placeholder: "25" })}
+            {text("licenseExpiry", "License expiry (optional)", { type: "date" })}
+          </CardContent>
+        </Card>
+      ) : (
+        <Button type="button" variant="outline" size="sm" onClick={() => setLicenseOpen(true)}>
+          <KeyRound />
+          Add license details
+        </Button>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Specifications</CardTitle>
-          <CardDescription>Free-form details such as CPU, RAM, storage, screen size or IMEI.</CardDescription>
+          <CardDescription>
+            {profile
+              ? "Suggested fields for this category. Leave any blank or remove it; blank rows aren't saved."
+              : "Free-form details such as CPU, RAM, storage, screen size, IP address or IMEI."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {specs.fields.map((f, i) => (
+          {specs.fields.map((f, i) => {
+            const hint = specHint(specRows?.[i]?.key);
+            const listId = hint?.options ? `spec-options-${i}` : undefined;
+            return (
             <div key={f.id} className="flex gap-2">
               <Input placeholder="e.g. RAM" aria-label="Specification name" className="w-1/3" {...form.register(`specifications.${i}.key`)} />
-              <Input placeholder="e.g. 16 GB" aria-label="Specification value" {...form.register(`specifications.${i}.value`)} />
+              <Input
+                placeholder={hint?.placeholder ? `e.g. ${hint.placeholder}` : "e.g. 16 GB"}
+                aria-label={`${specRows?.[i]?.key || "Specification"} value`}
+                list={listId}
+                {...form.register(`specifications.${i}.value`)}
+              />
+              {listId && (
+                <datalist id={listId}>
+                  {hint!.options!.map((o) => (
+                    <option key={o} value={o} />
+                  ))}
+                </datalist>
+              )}
               <Button type="button" variant="ghost" size="icon" onClick={() => specs.remove(i)} aria-label="Remove specification">
                 <Trash2 />
               </Button>
             </div>
-          ))}
+            );
+          })}
           <Button type="button" variant="outline" size="sm" onClick={() => specs.append({ key: "", value: "" })}>
             <Plus />
             Add specification

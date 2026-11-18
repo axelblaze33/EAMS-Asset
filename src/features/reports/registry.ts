@@ -6,6 +6,7 @@ import {
   Building2,
   CircleAlert,
   History,
+  KeyRound,
   LogOut,
   PackageCheck,
   PackageOpen,
@@ -278,6 +279,52 @@ const warranty = define({
     { header: "Days left", kind: "number", width: 8, value: (r) => (r.warrantyExpiry ? differenceInCalendarDays(r.warrantyExpiry, todayUtc()) : null) },
     { header: "Status", kind: "status", width: 11, value: (r) => label(ASSET_STATUS, r.status) },
     { header: "Assigned to", width: 16, value: (r) => r.assignments[0]?.employee.fullName },
+  ],
+});
+
+const licenses = define({
+  key: "licenses",
+  title: "License expiry",
+  description: "Antivirus and software licenses ending in a period (next 90 days if no dates are chosen).",
+  group: "Inventory",
+  icon: KeyRound,
+  filters: ["from", "to", "category", "department"],
+  dateLabel: "License ends between",
+  async load(f) {
+    const today = todayUtc();
+    const from = f.from ?? (f.to ? undefined : today);
+    const to = f.to ?? (f.from ? undefined : new Date(today.getTime() + 90 * 86_400_000));
+    const rows = await db.asset.findMany({
+      where: {
+        deletedAt: null,
+        status: { notIn: ["DISPOSED", "LOST", "RETIRED"] },
+        categoryId: f.category,
+        ...assetDept(f.department),
+        licenseExpiry: { not: null, ...(from && { gte: from }), ...(to && { lte: to }) },
+      },
+      orderBy: { licenseExpiry: "asc" },
+      take: LIMIT,
+      include: { category: true, vendor: true, ...holder },
+    });
+    return {
+      rows,
+      summary: [
+        count(rows.length, "Licenses"),
+        count(rows.filter((r) => r.licenseExpiry! < today).length, "Already expired"),
+        count(rows.reduce((n, r) => n + (r.licenseSeats ?? 0), 0), "Seats / devices"),
+      ],
+    };
+  },
+  columns: [
+    { header: "Asset ID", kind: "mono", width: 11, value: (r) => r.assetCode },
+    { header: "Asset", width: 20, value: (r) => r.name },
+    { header: "Category", width: 12, value: (r) => r.category.name },
+    { header: "License number", kind: "mono", width: 18, value: (r) => r.licenseKey },
+    { header: "Seats", kind: "number", width: 7, value: (r) => r.licenseSeats },
+    { header: "Vendor", width: 15, value: (r) => r.vendor?.name },
+    { header: "License expiry", kind: "date", width: 11, value: (r) => r.licenseExpiry },
+    { header: "Days left", kind: "number", width: 8, value: (r) => (r.licenseExpiry ? differenceInCalendarDays(r.licenseExpiry, todayUtc()) : null) },
+    { header: "Status", kind: "status", width: 10, value: (r) => label(ASSET_STATUS, r.status) },
   ],
 });
 
@@ -692,6 +739,7 @@ export const REPORTS: ReportDef[] = [
   assigned,
   damaged,
   warranty,
+  licenses,
   employeeAllocation,
   department,
   exitClearance,

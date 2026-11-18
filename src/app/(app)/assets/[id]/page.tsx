@@ -50,6 +50,8 @@ export default async function AssetPage({ params }: PageProps<"/assets/[id]">) {
     salvagePercent: Number(asset.category.salvagePercent),
   });
   const warrantyDays = asset.warrantyExpiry ? differenceInCalendarDays(asset.warrantyExpiry, new Date()) : null;
+  const licenseDays = asset.licenseExpiry ? differenceInCalendarDays(asset.licenseExpiry, new Date()) : null;
+  const hasLicense = Boolean(asset.licenseKey || asset.licenseSeats || asset.licenseExpiry);
   const specs = Object.entries((asset.specifications as Record<string, string> | null) ?? {});
   const canEdit = hasPermission(user, "asset:update") && !asset.deletedAt;
   const canEmployees = hasPermission(user, "employee:read");
@@ -240,6 +242,27 @@ export default async function AssetPage({ params }: PageProps<"/assets/[id]">) {
                       </span>
                     ),
                   ],
+                  ...(hasLicense
+                    ? ([
+                        ["License no.", asset.licenseKey && <span key="l" className="font-mono text-xs break-all">{asset.licenseKey}</span>],
+                        ["Seats / devices", asset.licenseSeats?.toLocaleString("en-IN")],
+                        [
+                          "License expiry",
+                          asset.licenseExpiry && (
+                            <span
+                              key="le"
+                              className={cn(
+                                licenseDays !== null && licenseDays < 0 && "font-medium text-destructive",
+                                licenseDays !== null && licenseDays >= 0 && licenseDays <= 30 && "font-medium text-amber-600 dark:text-amber-400",
+                              )}
+                            >
+                              {d(asset.licenseExpiry)}
+                              {licenseDays !== null && (licenseDays < 0 ? " (expired)" : ` (${licenseDays} days left)`)}
+                            </span>
+                          ),
+                        ],
+                      ] as [string, React.ReactNode][])
+                    : []),
                   ["Added", `${d(asset.createdAt)}${asset.createdBy ? ` by ${asset.createdBy.name}` : ""}`],
                 ]}
               />

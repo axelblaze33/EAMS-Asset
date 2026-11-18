@@ -42,7 +42,7 @@ export default async function AssetsPage({ searchParams }: PageProps<"/assets">)
   const f = assetFilters(sp);
   const [{ rows, total }, org] = await Promise.all([listAssets(f), getOrgOptions()]);
   const sortProps = { sort: f.sort, dir: f.dir, pathname: PATH, sp };
-  const filtered = Boolean(f.q || f.category || f.status || f.branch || f.department || f.warranty);
+  const filtered = Boolean(f.q || f.category || f.status || f.branch || f.department || f.warranty || f.license);
   const canEmployees = hasPermission(user, "employee:read");
 
   return (
@@ -78,7 +78,7 @@ export default async function AssetsPage({ searchParams }: PageProps<"/assets">)
       />
 
       <ListToolbar
-        searchPlaceholder="Search ID, serial, tag, model, employee…"
+        searchPlaceholder="Search ID, serial, tag, license, model, employee…"
         filters={[
           { key: "category", label: "Categories", options: org.categories },
           { key: "status", label: "Statuses", options: Object.entries(ASSET_STATUS).map(([value, m]) => ({ value, label: m.label })) },
@@ -92,6 +92,16 @@ export default async function AssetsPage({ searchParams }: PageProps<"/assets">)
               { value: "60", label: "Expiring in 60 days" },
               { value: "90", label: "Expiring in 90 days" },
               { value: "expired", label: "Warranty expired" },
+            ],
+          },
+          {
+            key: "license",
+            label: "Licenses",
+            options: [
+              { value: "30", label: "License expiring in 30 days" },
+              { value: "60", label: "License expiring in 60 days" },
+              { value: "90", label: "License expiring in 90 days" },
+              { value: "expired", label: "License expired" },
             ],
           },
         ]}
