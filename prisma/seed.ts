@@ -162,6 +162,18 @@ async function seedDemoData() {
     ].map(([name, code, city]) => db.branch.create({ data: { name: name!, code: code!, city } })),
   );
 
+  // Group companies, each operating under one HQ.
+  const companies = await Promise.all(
+    [
+      ["Meltn Mellow", "MNM", "PUN"],
+      ["BVK Foods", "BVK", "PUN"],
+      ["Hamma Foods", "HMF", "PUN"],
+      ["Coastal Retail", "CRT", "BOM"],
+    ].map(([name, code, branchCode]) =>
+      db.company.create({ data: { name: name!, code: code!, branchId: branches.find((b) => b.code === branchCode)!.id } }),
+    ),
+  );
+
   const vendors = await Promise.all(
     [
       ["Dell Technologies India", "Rohit Sharma", "enterprise@dell.example"],
@@ -315,6 +327,8 @@ async function seedDemoData() {
           : pick<AssetStatus>(["ASSIGNED", "ASSIGNED", "ASSIGNED", "ASSIGNED", "AVAILABLE", "AVAILABLE", "UNDER_MAINTENANCE", "DAMAGED", "RETIRED"]);
       const condition: AssetCondition =
         status === "DAMAGED" ? "DAMAGED" : status === "RETIRED" ? "POOR" : pick<AssetCondition>(["NEW", "EXCELLENT", "GOOD", "GOOD", "FAIR"]);
+      const branch = pick(branches);
+      const branchCompanies = companies.filter((c) => c.branchId === branch.id);
       const asset = await db.asset.create({
         data: {
           assetCode: `AST-${String(seq).padStart(6, "0")}`,
@@ -332,7 +346,8 @@ async function seedDemoData() {
           warrantyExpiry: addMonths(purchaseDate, m.cat === "Access Card" ? 60 : pick([12, 24, 36])),
           condition,
           status,
-          branchId: pick(branches).id,
+          branchId: branch.id,
+          companyId: branchCompanies.length ? pick(branchCompanies).id : null,
           specifications: m.specs,
           ...(m.cat === "Antivirus" && {
             licenseKey: `SEQ-${(1e12 + seq * 98_765_431).toString(36).toUpperCase().match(/.{1,4}/g)!.join("-")}`,

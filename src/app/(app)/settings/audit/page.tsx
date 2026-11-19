@@ -27,6 +27,7 @@ const ENTITY_LABEL: Record<string, string> = {
   Department: "Departments",
   Designation: "Designations",
   Branch: "Branches",
+  Company: "Companies",
   Vendor: "Vendors",
   Report: "Report exports",
   System: "System",

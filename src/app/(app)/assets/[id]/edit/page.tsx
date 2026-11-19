@@ -14,7 +14,7 @@ export default async function EditAssetPage({ params }: PageProps<"/assets/[id]/
   const [asset, org] = await Promise.all([
     db.asset.findFirst({
       where: { id, deletedAt: null },
-      include: { category: true, vendor: true, branch: true, department: true },
+      include: { category: true, vendor: true, branch: true, company: true, department: true },
     }),
     getOrgOptions(),
   ]);
@@ -51,6 +51,7 @@ export default async function EditAssetPage({ params }: PageProps<"/assets/[id]/
           condition: asset.condition,
           status: asset.status,
           branchId: asset.branchId ?? "",
+          companyId: asset.companyId ?? "",
           departmentId: asset.departmentId ?? "",
           specifications: specs.length ? specs : [{ key: "", value: "" }],
           description: asset.description ?? "",
@@ -59,6 +60,10 @@ export default async function EditAssetPage({ params }: PageProps<"/assets/[id]/
           categories: withCurrent(org.categories, asset.category),
           vendors: withCurrent(org.vendors, asset.vendor),
           branches: withCurrent(org.branches, asset.branch),
+          companies:
+            asset.company && !org.companies.some((c) => c.value === asset.company!.id)
+              ? [...org.companies, { value: asset.company.id, label: `${asset.company.name} (archived)`, branchId: asset.company.branchId, branchName: "" }]
+              : org.companies,
           departments: withCurrent(org.departments, asset.department),
         }}
       />

@@ -132,7 +132,7 @@ export async function getAssignOptions() {
     db.asset.findMany({
       where: { deletedAt: null, status: "AVAILABLE" },
       orderBy: [{ category: { name: "asc" } }, { assetCode: "asc" }],
-      select: { id: true, assetCode: true, name: true, serialNumber: true, condition: true, category: { select: { name: true } }, branch: { select: { name: true } } },
+      select: { id: true, assetCode: true, name: true, serialNumber: true, condition: true, category: { select: { name: true } }, branch: { select: { name: true } }, company: { select: { name: true } } },
     }),
   ]);
   return { employees, assets };

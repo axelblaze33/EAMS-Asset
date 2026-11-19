@@ -221,7 +221,8 @@ export default async function AssetPage({ params }: PageProps<"/assets/[id]">) {
                   ["Model", asset.model],
                   ["Serial number", asset.serialNumber && <span key="s" className="font-mono text-xs">{asset.serialNumber}</span>],
                   ["Asset tag", asset.assetTag && <span key="t" className="font-mono text-xs">{asset.assetTag}</span>],
-                  ["Branch", asset.branch?.name],
+                  ["Location / HQ", asset.branch?.name],
+                  ["Company", asset.company?.name],
                   ["Department", asset.department?.name],
                 ]}
               />

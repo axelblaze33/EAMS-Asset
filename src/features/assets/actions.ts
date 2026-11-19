@@ -5,20 +5,31 @@ import { db } from "@/lib/db";
 import { authorize } from "@/lib/auth/dal";
 import { writeAudit } from "@/lib/audit";
 import { nextCode } from "@/lib/codes";
-import { ActionError, ok, runAction, type ActionResult } from "@/lib/action";
+import { ActionError, fail, ok, runAction, type ActionResult } from "@/lib/action";
 import { ASSET_STATUS } from "@/lib/labels";
+import { alignCompany } from "./company";
 import { assetSchema, type AssetFormValues } from "./schemas";
 
 export async function saveAsset(input: { id?: string | null; values: AssetFormValues }): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
     const actor = await authorize(input.id ? "asset:update" : "asset:create");
-    const data = assetSchema.parse(input.values);
+    const parsed = assetSchema.parse(input.values);
+
+    // The company must sit under the chosen location; with no location picked,
+    // the company's HQ is used.
+    const company = parsed.companyId
+      ? await db.company.findUnique({ where: { id: parsed.companyId }, select: { id: true, name: true, branchId: true, deletedAt: true } })
+      : null;
+    const aligned = alignCompany(parsed, company);
+    if (!aligned.ok) return fail(aligned.error, { companyId: [aligned.error] });
+    const data = { ...parsed, branchId: aligned.branchId, companyId: aligned.companyId };
 
     const saved = await db.$transaction(async (tx) => {
       if (!input.id) {
         if (data.status === "ASSIGNED") {
           throw new ActionError("New assets can't start as Assigned. Create it, then use Assign Asset.");
         }
+        if (company?.deletedAt) throw new ActionError(`${company.name} is archived. Restore it in Master Data or pick another company.`);
         const created = await tx.asset.create({
           data: { ...data, specifications: data.specifications ?? undefined, assetCode: await nextCode(tx, "asset"), createdById: actor.id },
         });
@@ -31,6 +42,10 @@ export async function saveAsset(input: { id?: string | null; values: AssetFormVa
 
       const before = await tx.asset.findUnique({ where: { id: input.id } });
       if (!before || before.deletedAt) throw new ActionError("This asset no longer exists or is archived.");
+      // An archived company may stay on assets that already use it, but not be newly picked.
+      if (company?.deletedAt && before.companyId !== company.id) {
+        throw new ActionError(`${company.name} is archived. Restore it in Master Data or pick another company.`);
+      }
 
       // Status moves into and out of ASSIGNED only through assignment and return.
       if (data.status !== before.status) {

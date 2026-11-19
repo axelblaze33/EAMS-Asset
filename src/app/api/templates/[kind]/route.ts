@@ -39,6 +39,7 @@ const TEMPLATES = {
       Condition: "New",
       Status: "Available",
       Branch: "Pune HQ",
+      Company: "BVK Foods",
       Department: "Engineering",
       Specifications: "CPU: i7-1365U; RAM: 16 GB; Storage: 512 GB SSD",
       Description: "",

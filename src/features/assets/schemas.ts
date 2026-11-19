@@ -69,6 +69,7 @@ export const assetSchema = z
     condition: z.enum(ASSET_CONDITIONS),
     status: z.enum(ASSET_STATUSES),
     branchId: optionalId,
+    companyId: optionalId,
     departmentId: optionalId,
     specifications: z
       .array(z.object({ key: z.string().trim().max(60), value: z.string().trim().max(250) }))
@@ -104,6 +105,7 @@ export type AssetFormValues = {
   condition: (typeof ASSET_CONDITIONS)[number];
   status: (typeof ASSET_STATUSES)[number];
   branchId: string;
+  companyId: string;
   departmentId: string;
   specifications: { key: string; value: string }[];
   description: string;

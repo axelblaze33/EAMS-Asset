@@ -23,10 +23,17 @@ export async function saveMasterRecord(input: {
 
     const saved = await db.$transaction(async (tx) => {
       const model = delegate(entity, tx);
+      if (entity === "companies" && !(await tx.branch.findUnique({ where: { id: String((data as { branchId?: unknown }).branchId) }, select: { id: true } }))) {
+        throw new ActionError("Choose the HQ / branch this company operates under.");
+      }
       if (input.id) {
         const before = await model.findUnique({ where: { id: input.id } });
         if (!before) throw new ActionError("This record no longer exists.");
         const after = await model.update({ where: { id: input.id }, data });
+        // A company operates under one HQ; its assets move with it.
+        if (entity === "companies" && before.branchId !== after.branchId) {
+          await tx.asset.updateMany({ where: { companyId: after.id }, data: { branchId: String(after.branchId) } });
+        }
         await writeAudit({ actorId: actor.id, action: `${ENTITY_TYPE[entity].toLowerCase()}.update`, entityType: ENTITY_TYPE[entity], entityId: after.id, before, after }, tx);
         return after;
       }
