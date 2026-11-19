@@ -14,6 +14,7 @@ export function assetFilters(sp: SearchParams) {
     category: param(sp, "category"),
     status: enumParam(sp, "status", ASSET_STATUSES),
     branch: param(sp, "branch"),
+    company: param(sp, "company"),
     department: param(sp, "department"),
     warranty: enumParam(sp, "warranty", WARRANTY_FILTERS),
     license: enumParam(sp, "license", WARRANTY_FILTERS),
@@ -40,6 +41,7 @@ export function assetWhere(f: Omit<Filters, "page" | "pageSize" | "skip" | "sort
     categoryId: f.category,
     status: f.status,
     branchId: f.branch,
+    companyId: f.company,
     departmentId: f.department,
     ...warranty,
     ...license,
@@ -53,6 +55,7 @@ export function assetWhere(f: Omit<Filters, "page" | "pageSize" | "skip" | "sort
         { model: { contains: f.q, mode: "insensitive" } },
         { brand: { contains: f.q, mode: "insensitive" } },
         { category: { name: { contains: f.q, mode: "insensitive" } } },
+        { company: { name: { contains: f.q, mode: "insensitive" } } },
         // Search by the employee currently holding it.
         {
           assignments: {
@@ -114,6 +117,7 @@ export const assetListSelect = {
   deletedAt: true,
   category: { select: { name: true } },
   branch: { select: { name: true } },
+  company: { select: { name: true } },
   department: { select: { name: true } },
   vendor: { select: { name: true } },
   assignments: {
@@ -139,6 +143,7 @@ export async function getAsset(id: string) {
       category: true,
       vendor: true,
       branch: true,
+      company: true,
       department: true,
       createdBy: { select: { name: true } },
       assignments: {

@@ -9,6 +9,7 @@ import { ok, runAction, type ActionResult } from "@/lib/action";
 import { readSpreadsheet } from "@/lib/spreadsheet";
 import type { ImportRowResult, ImportSummary } from "@/lib/import-types";
 import { ASSET_CONDITION, ASSET_STATUS } from "@/lib/labels";
+import { alignCompany } from "./company";
 import { assetSchema, parseSpecString } from "./schemas";
 
 const COLUMNS = {
@@ -30,7 +31,8 @@ const COLUMNS = {
   licenseExpiry: ["licenseexpiry", "licenseexpirydate", "licenceexpiry", "subscriptionexpiry", "renewaldate", "licenseend"],
   condition: ["condition", "assetcondition"],
   status: ["status", "assetstatus"],
-  branch: ["branch", "location"],
+  branch: ["branch", "location", "hq", "headquarters"],
+  company: ["company", "companyname", "groupcompany"],
   department: ["department", "dept"],
   specifications: ["specifications", "specs"],
   description: ["description", "notes", "remarks"],
@@ -59,6 +61,7 @@ const SOURCE_COLUMN: Record<string, keyof typeof COLUMNS> = {
   categoryId: "category",
   vendorId: "vendor",
   branchId: "branch",
+  companyId: "company",
   departmentId: "department",
 };
 
@@ -80,12 +83,14 @@ export async function importAssets(formData: FormData): Promise<ActionResult<Imp
     const commit = formData.get("mode") === "commit";
     const { rows } = await readSpreadsheet(formData.get("file") as File);
 
-    const [categories, vendors, branches, departments, existing] = await Promise.all([
+    const [categories, vendors, branches, companies, departments, existing] = await Promise.all([
       db.assetCategory.findMany({ where: { deletedAt: null }, select: { id: true, name: true, code: true } }),
       db.vendor.findMany({ where: { deletedAt: null }, select: { id: true, name: true } }),
       db.branch.findMany({ where: { deletedAt: null }, select: { id: true, name: true, code: true } }),
+      // Archived companies are kept so assets already using one still import; picking one newly is refused below.
+      db.company.findMany({ select: { id: true, name: true, code: true, branchId: true, deletedAt: true } }),
       db.department.findMany({ where: { deletedAt: null }, select: { id: true, name: true, code: true } }),
-      db.asset.findMany({ select: { id: true, assetCode: true, serialNumber: true, assetTag: true, status: true, deletedAt: true } }),
+      db.asset.findMany({ select: { id: true, assetCode: true, serialNumber: true, assetTag: true, status: true, deletedAt: true, branchId: true, companyId: true } }),
     ]);
     const map = (list: { id: string; name: string; code?: string }[]) => {
       const m = new Map<string, string>();
@@ -99,6 +104,8 @@ export async function importAssets(formData: FormData): Promise<ActionResult<Imp
     const vendorMap = map(vendors);
     const branchMap = map(branches);
     const deptMap = map(departments);
+    const companyMap = map(companies);
+    const companyById = new Map(companies.map((c) => [c.id, c]));
     const byCode = new Map(existing.map((a) => [a.assetCode, a]));
     const bySerial = new Map(existing.filter((a) => a.serialNumber).map((a) => [a.serialNumber!.toLowerCase(), a]));
     const byTag = new Map(existing.filter((a) => a.assetTag).map((a) => [a.assetTag!.toLowerCase(), a]));
@@ -169,6 +176,7 @@ export async function importAssets(formData: FormData): Promise<ActionResult<Imp
         condition: condition ?? "GOOD",
         status: status ?? "AVAILABLE",
         branchId: lookup(pick(values, "branch"), branchMap, "Branch"),
+        companyId: lookup(pick(values, "company"), companyMap, "Company"),
         departmentId: lookup(pick(values, "department"), deptMap, "Department"),
         specifications: parseSpecString(pick(values, "specifications")),
         description: pick(values, "description"),
@@ -177,8 +185,19 @@ export async function importAssets(formData: FormData): Promise<ActionResult<Imp
         for (const issue of parsed.error.issues) {
           const field = String(issue.path[0] ?? "");
           // Lookup failures were already reported with a clearer message above.
-          if (["categoryId", "vendorId", "branchId", "departmentId"].includes(field)) continue;
+          if (["categoryId", "vendorId", "branchId", "companyId", "departmentId"].includes(field)) continue;
           errors.push(`${FIELD_LABEL[field] ?? field}: ${issue.message}`);
+        }
+      }
+
+      // The company must operate under the asset's location; a blank Branch takes the company's HQ.
+      let aligned: ReturnType<typeof alignCompany> | null = null;
+      if (parsed.success && parsed.data.companyId) {
+        const company = companyById.get(parsed.data.companyId);
+        aligned = alignCompany(parsed.data, company);
+        if (!aligned.ok) errors.push(`Company: ${aligned.error}`);
+        else if (company?.deletedAt && current?.companyId !== company.id) {
+          errors.push(`Company ${company.name} is archived. Restore it in Master Data first.`);
         }
       }
 
@@ -193,6 +212,11 @@ export async function importAssets(formData: FormData): Promise<ActionResult<Imp
             Object.entries(parsed.data).filter(([key]) => pick(values, SOURCE_COLUMN[key] ?? (key as keyof typeof COLUMNS)) !== ""),
           ) as Partial<typeof parsed.data>)
         : parsed.data;
+      if (aligned?.ok) data.branchId = aligned.branchId;
+      else if (current && data.branchId && !pick(values, "company")) {
+        // Moving to another location drops a company that doesn't operate there.
+        if (current.companyId && companyById.get(current.companyId)?.branchId !== data.branchId) data.companyId = null;
+      }
       writes.push({ data, existingId: current?.id });
       results.push({ rowNumber, label, action: current ? "update" : "create", errors: [] });
     }

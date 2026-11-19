@@ -4,6 +4,7 @@ import { bookValue } from "@/lib/depreciation";
 import { enumParam, hrefWith, parseList } from "@/lib/list-params";
 import { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { assetSchema, parseSpecString } from "@/features/assets/schemas";
+import { alignCompany } from "@/features/assets/company";
 import { accessoriesSchema, assignSchema, acknowledgementSchema, returnSchema, sameAccessories } from "@/features/assignments/schemas";
 import { employeeSchema } from "@/features/employees/schemas";
 import { categoryIcon } from "@/components/shared/category-icon";
@@ -79,6 +80,23 @@ describe("default role permissions", () => {
   });
   it("only grants permissions that exist", () => {
     for (const grants of Object.values(DEFAULT_ROLE_PERMISSIONS)) for (const p of grants) expect(ALL_PERMISSIONS).toContain(p);
+  });
+});
+
+describe("asset company must sit under the asset's HQ", () => {
+  const bvk = { id: "c1", name: "BVK Foods", branchId: "pune" };
+  it("leaves assets without a company alone", () => {
+    expect(alignCompany({ branchId: "pune", companyId: null }, null)).toEqual({ ok: true, branchId: "pune", companyId: null });
+  });
+  it("fills in the company's HQ when no location is chosen", () => {
+    expect(alignCompany({ branchId: null, companyId: "c1" }, bvk)).toEqual({ ok: true, branchId: "pune", companyId: "c1" });
+  });
+  it("accepts a company under the chosen location", () => {
+    expect(alignCompany({ branchId: "pune", companyId: "c1" }, bvk).ok).toBe(true);
+  });
+  it("rejects a company from another location, or an unknown one", () => {
+    expect(alignCompany({ branchId: "sambhajinagar", companyId: "c1" }, bvk).ok).toBe(false);
+    expect(alignCompany({ branchId: "pune", companyId: "c9" }, undefined).ok).toBe(false);
   });
 });
 

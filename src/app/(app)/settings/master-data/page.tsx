@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { requirePagePermission } from "@/lib/auth/dal";
 import { cn } from "@/lib/utils";
 import { MASTER, MASTER_ENTITIES, type MasterEntity } from "@/features/master-data/config";
-import { listMaster } from "@/features/master-data/queries";
+import { getOrgOptions, listMaster } from "@/features/master-data/queries";
 import { MasterTable } from "@/features/master-data/master-table";
 
 export const metadata = { title: "Master Data" };
@@ -12,7 +12,8 @@ export default async function MasterDataPage({ searchParams }: PageProps<"/setti
   await requirePagePermission("master:manage");
   const { tab } = await searchParams;
   const entity: MasterEntity = MASTER_ENTITIES.includes(tab as MasterEntity) ? (tab as MasterEntity) : "categories";
-  const rows = await listMaster(entity);
+  const needsOptions = MASTER[entity].fields.some((f) => "optionsFrom" in f);
+  const [rows, org] = await Promise.all([listMaster(entity), needsOptions ? getOrgOptions() : null]);
 
   return (
     <>
@@ -33,7 +34,7 @@ export default async function MasterDataPage({ searchParams }: PageProps<"/setti
         ))}
       </nav>
       <p className="text-sm text-muted-foreground">{MASTER[entity].description}</p>
-      <MasterTable key={entity} entity={entity} rows={rows} />
+      <MasterTable key={entity} entity={entity} rows={rows} options={org ? { branches: org.branches } : undefined} />
     </>
   );
 }

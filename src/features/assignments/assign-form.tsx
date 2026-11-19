@@ -19,7 +19,7 @@ import { accessorySuggestions } from "./schemas";
 
 type Options = {
   employees: { id: string; fullName: string; employeeCode: string; employmentStatus: string; department: { name: string } | null; _count: { assignments: number } }[];
-  assets: { id: string; assetCode: string; name: string; serialNumber: string | null; condition: string; category: { name: string }; branch: { name: string } | null }[];
+  assets: { id: string; assetCode: string; name: string; serialNumber: string | null; condition: string; category: { name: string }; branch: { name: string } | null; company: { name: string } | null }[];
 };
 type Item = { assetId: string; condition: string; accessories: string[] };
 
@@ -61,7 +61,7 @@ export function AssignForm({
   const selected = new Set(items.map((i) => i.assetId));
   const q = query.trim().toLowerCase();
   const matches = options.assets.filter((a) =>
-    !q ? true : [a.assetCode, a.name, a.serialNumber, a.category.name, a.branch?.name].some((v) => v?.toLowerCase().includes(q)),
+    !q ? true : [a.assetCode, a.name, a.serialNumber, a.category.name, a.branch?.name, a.company?.name].some((v) => v?.toLowerCase().includes(q)),
   );
 
   function toggle(id: string) {
@@ -180,6 +180,7 @@ export function AssignForm({
                               <span className="font-mono">{a.assetCode}</span>
                               {a.serialNumber && ` · S/N ${a.serialNumber}`}
                               {a.branch && ` · ${a.branch.name}`}
+                              {a.company && ` · ${a.company.name}`}
                             </span>
                           </span>
                           <span className="hidden text-xs text-muted-foreground sm:block">{a.category.name}</span>

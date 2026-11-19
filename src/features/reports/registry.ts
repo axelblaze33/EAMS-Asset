@@ -85,7 +85,7 @@ const inventory = define({
       where: { deletedAt: null, categoryId: f.category, status: f.status as never, ...assetDept(f.department) },
       orderBy: { assetCode: "asc" },
       take: LIMIT,
-      include: { category: true, branch: true, vendor: true, department: true, ...holder },
+      include: { category: true, branch: true, company: true, vendor: true, department: true, ...holder },
     });
     return {
       rows,
@@ -100,6 +100,7 @@ const inventory = define({
     { header: "Status", kind: "status", width: 12, value: (r) => label(ASSET_STATUS, r.status) },
     { header: "Condition", width: 9, value: (r) => label(ASSET_CONDITION, r.condition) },
     { header: "Branch", width: 13, value: (r) => r.branch?.name },
+    { header: "Company", width: 14, exportOnly: true, value: (r) => r.company?.name },
     { header: "Assigned to", width: 16, value: (r) => r.assignments[0]?.employee.fullName },
     { header: "Purchased", kind: "date", width: 10, value: (r) => r.purchaseDate },
     { header: "Cost", kind: "money", width: 10, value: (r) => num(r.purchaseCost) },
@@ -124,6 +125,7 @@ const available = define({
       include: {
         category: true,
         branch: true,
+        company: true,
         assignments: { where: { status: "RETURNED" }, orderBy: { assignedAt: "desc" }, take: 1, select: { return: { select: { returnedAt: true } } } },
       },
     });
@@ -141,6 +143,7 @@ const available = define({
     { header: "Serial number", kind: "mono", width: 15, value: (r) => r.serialNumber },
     { header: "Condition", width: 10, value: (r) => label(ASSET_CONDITION, r.condition) },
     { header: "Branch", width: 14, value: (r) => r.branch?.name },
+    { header: "Company", width: 14, exportOnly: true, value: (r) => r.company?.name },
     { header: "In stock since", kind: "date", width: 11, value: (r) => r.since },
     { header: "Days idle", kind: "number", width: 8, value: (r) => r.idle },
     { header: "Cost", kind: "money", width: 10, value: (r) => num(r.purchaseCost) },

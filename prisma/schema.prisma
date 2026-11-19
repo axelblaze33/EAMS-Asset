@@ -234,8 +234,27 @@ model Branch {
   deletedAt DateTime?  @map("deleted_at") @db.Timestamptz
   employees Employee[]
   assets    Asset[]
+  companies Company[]
 
   @@map("branches")
+}
+
+// A group company that operates under exactly one branch / HQ
+// (e.g. Meltn Mellow under Pune HQ). An asset's company must belong to the
+// asset's branch; the asset actions enforce this.
+model Company {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  code      String    @unique
+  branchId  String    @map("branch_id")
+  branch    Branch    @relation(fields: [branchId], references: [id])
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+  assets    Asset[]
+
+  @@index([branchId])
+  @@map("companies")
 }
 
 model Employee {
@@ -333,6 +352,8 @@ model Asset {
   status         AssetStatus    @default(AVAILABLE)
   branchId       String?        @map("branch_id")
   branch         Branch?        @relation(fields: [branchId], references: [id])
+  companyId      String?        @map("company_id")
+  company        Company?       @relation(fields: [companyId], references: [id])
   departmentId   String?        @map("department_id")
   department     Department?    @relation(fields: [departmentId], references: [id])
   specifications Json?
@@ -352,6 +373,7 @@ model Asset {
   @@index([status])
   @@index([categoryId])
   @@index([branchId])
+  @@index([companyId])
   @@index([departmentId])
   @@index([warrantyExpiry])
   @@index([licenseExpiry])

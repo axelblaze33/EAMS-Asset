@@ -32,6 +32,7 @@ export default async function NewAssetPage() {
           condition: "NEW",
           status: "AVAILABLE",
           branchId: "",
+          companyId: "",
           departmentId: "",
           specifications: [{ key: "", value: "" }],
           description: "",

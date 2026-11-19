@@ -42,7 +42,7 @@ export default async function AssetsPage({ searchParams }: PageProps<"/assets">)
   const f = assetFilters(sp);
   const [{ rows, total }, org] = await Promise.all([listAssets(f), getOrgOptions()]);
   const sortProps = { sort: f.sort, dir: f.dir, pathname: PATH, sp };
-  const filtered = Boolean(f.q || f.category || f.status || f.branch || f.department || f.warranty || f.license);
+  const filtered = Boolean(f.q || f.category || f.status || f.branch || f.company || f.department || f.warranty || f.license);
   const canEmployees = hasPermission(user, "employee:read");
 
   return (
@@ -62,7 +62,7 @@ export default async function AssetsPage({ searchParams }: PageProps<"/assets">)
             {!f.archived && hasPermission(user, "asset:import") && (
               <ImportDialog
                 title="Import assets"
-                description="Rows are matched on Serial Number: existing assets are updated, others are added with a new asset ID. Categories, vendors, branches and departments must already exist."
+                description="Rows are matched on Serial Number: existing assets are updated, others are added with a new asset ID. Categories, vendors, branches, companies and departments must already exist. A company fills in its HQ when Branch is blank."
                 templateHref="/api/templates/assets"
                 action={importAssets}
               />
@@ -83,6 +83,7 @@ export default async function AssetsPage({ searchParams }: PageProps<"/assets">)
           { key: "category", label: "Categories", options: org.categories },
           { key: "status", label: "Statuses", options: Object.entries(ASSET_STATUS).map(([value, m]) => ({ value, label: m.label })) },
           { key: "branch", label: "Branches", options: org.branches },
+          { key: "company", label: "Companies", options: org.companies.map((c) => ({ value: c.value, label: `${c.label} · ${c.branchName}` })) },
           { key: "department", label: "Departments", options: org.departments },
           {
             key: "warranty",
@@ -162,7 +163,10 @@ export default async function AssetsPage({ searchParams }: PageProps<"/assets">)
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">{a.category.name}</TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {a.category.name}
+                        {a.company && <div className="text-xs text-muted-foreground">{a.company.name}</div>}
+                      </TableCell>
                       <TableCell className="hidden font-mono text-xs lg:table-cell">{a.serialNumber ?? "—"}</TableCell>
                       <TableCell>
                         {holder ? (

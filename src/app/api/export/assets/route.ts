@@ -32,6 +32,7 @@ const COLUMNS: ExportColumn<Row>[] = [
   { header: "Condition", value: (r) => ASSET_CONDITION[r.condition].label },
   { header: "Status", value: (r) => ASSET_STATUS[r.status].label },
   { header: "Branch", width: 18, value: (r) => r.branch?.name },
+  { header: "Company", width: 20, value: (r) => r.company?.name },
   { header: "Department", width: 18, value: (r) => r.department?.name },
   { header: "Assigned To", width: 24, value: (r) => r.assignments[0]?.employee.fullName },
   { header: "Assigned Employee ID", value: (r) => r.assignments[0]?.employee.employeeCode },

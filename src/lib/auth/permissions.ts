@@ -12,7 +12,7 @@ export const PERMISSIONS = {
   "settings:manage": "Change system settings",
   "audit:read": "View the audit log",
   // Master data
-  "master:manage": "Manage categories, departments, designations, branches and vendors",
+  "master:manage": "Manage categories, departments, designations, branches, companies and vendors",
   // Assets
   "asset:read": "View all assets",
   "asset:create": "Add assets",

@@ -3,12 +3,19 @@ import { z } from "zod";
 // Field and validation definitions for each master-data entity. Shared by the
 // server actions (validation) and the generic table + form UI.
 
-export type MasterEntity = "categories" | "departments" | "designations" | "branches" | "vendors";
+export type MasterEntity = "categories" | "departments" | "designations" | "branches" | "companies" | "vendors";
+
+/** Other master lists a field can pick from. */
+export type MasterOptionSource = "branches";
 
 export type MasterField = {
   name: string;
   label: string;
-  type?: "text" | "number" | "email" | "textarea";
+  type?: "text" | "number" | "email" | "textarea" | "select";
+  /** For select fields: which list supplies the choices. */
+  optionsFrom?: MasterOptionSource;
+  /** Row key holding the human-readable value shown in the table (e.g. branchName for branchId). */
+  display?: string;
   required?: boolean;
   placeholder?: string;
   hint?: string;
@@ -75,7 +82,7 @@ export const MASTER = {
   branches: {
     label: "Branches",
     singular: "branch",
-    description: "Office locations where employees work and assets are kept.",
+    description: "Office locations and HQs where employees work and assets are kept. Group companies are added under a branch in Companies.",
     fields: [
       { name: "name", label: "Name", required: true, column: true, placeholder: "Pune HQ" },
       { name: "code", label: "Code", required: true, column: true, mono: true, placeholder: "PUN" },
@@ -83,6 +90,31 @@ export const MASTER = {
       { name: "address", label: "Address", type: "textarea" },
     ],
     schema: z.object({ name: text().min(2, "Enter a name"), code, city: optionalText(80), address: optionalText(500) }),
+    defaults: {},
+  },
+  companies: {
+    label: "Companies",
+    singular: "company",
+    description: "Group companies and the one HQ / branch each operates under, so every asset can be traced to its company.",
+    fields: [
+      { name: "name", label: "Name", required: true, column: true, placeholder: "BVK Foods" },
+      { name: "code", label: "Code", required: true, column: true, mono: true, placeholder: "BVK" },
+      {
+        name: "branchId",
+        label: "HQ / branch",
+        type: "select",
+        optionsFrom: "branches",
+        display: "branchName",
+        required: true,
+        column: true,
+        hint: "Changing it moves this company's assets to the new location.",
+      },
+    ],
+    schema: z.object({
+      name: text().min(2, "Enter a name"),
+      code,
+      branchId: z.string().trim().min(1, "Choose the HQ / branch"),
+    }),
     defaults: {},
   },
   vendors: {

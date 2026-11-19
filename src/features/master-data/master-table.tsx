@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Archive, ArchiveRestore, Loader2, MoreHorizontal, Pencil, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -25,14 +25,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Field, applyFieldErrors } from "@/components/shared/form-fields";
+import { ComboboxField, Field, applyFieldErrors, type Option } from "@/components/shared/form-fields";
 import { cn } from "@/lib/utils";
-import { MASTER, displayField, type MasterEntity, type MasterField } from "./config";
+import { MASTER, displayField, type MasterEntity, type MasterField, type MasterOptionSource } from "./config";
 import { saveMasterRecord, setMasterArchived } from "./actions";
 
 type Row = Record<string, unknown> & { id: string; deletedAt: Date | null; usage: number };
+type SelectOptions = Partial<Record<MasterOptionSource, Option[]>>;
 
-export function MasterTable({ entity, rows }: { entity: MasterEntity; rows: Row[] }) {
+/** What a cell shows: the related record's name for select fields, else the value. */
+const shown = (row: Row, f: MasterField) => row[f.display ?? f.name];
+
+export function MasterTable({ entity, rows, options = {} }: { entity: MasterEntity; rows: Row[]; options?: SelectOptions }) {
   const cfg = MASTER[entity];
   const fields = cfg.fields as MasterField[];
   const columns = fields.filter((f) => f.column);
@@ -46,7 +50,7 @@ export function MasterTable({ entity, rows }: { entity: MasterEntity; rows: Row[
     return rows.filter(
       (r) =>
         (showArchived || !r.deletedAt) &&
-        (!q || fields.some((f) => String(r[f.name] ?? "").toLowerCase().includes(q))),
+        (!q || fields.some((f) => String(shown(r, f) ?? "").toLowerCase().includes(q))),
     );
   }, [rows, query, showArchived, fields]);
 
@@ -108,7 +112,7 @@ export function MasterTable({ entity, rows }: { entity: MasterEntity; rows: Row[
               <TableRow key={row.id} className={cn(row.deletedAt && "opacity-60")}>
                 {columns.map((c, i) => (
                   <TableCell key={c.name} className={cn(i === 0 && "pl-4 font-medium", c.mono && "font-mono text-xs")}>
-                    {String(row[c.name] ?? "—")}
+                    {String(shown(row, c) ?? "—")}
                     {i === 0 && row.deletedAt && <span className="ml-2 text-xs font-normal text-muted-foreground">Archived</span>}
                   </TableCell>
                 ))}
@@ -141,12 +145,22 @@ export function MasterTable({ entity, rows }: { entity: MasterEntity; rows: Row[
         Archived {cfg.label.toLowerCase()} are hidden from pickers but stay on existing records and in history.
       </p>
 
-      <MasterFormDialog entity={entity} row={editing} onClose={() => setEditing(null)} />
+      <MasterFormDialog entity={entity} row={editing} options={options} onClose={() => setEditing(null)} />
     </div>
   );
 }
 
-function MasterFormDialog({ entity, row, onClose }: { entity: MasterEntity; row: Row | "new" | null; onClose: () => void }) {
+function MasterFormDialog({
+  entity,
+  row,
+  options,
+  onClose,
+}: {
+  entity: MasterEntity;
+  row: Row | "new" | null;
+  options: SelectOptions;
+  onClose: () => void;
+}) {
   const cfg = MASTER[entity];
   const isNew = row === "new";
   const [pending, startTransition] = useTransition();
@@ -193,7 +207,23 @@ function MasterFormDialog({ entity, row, onClose }: { entity: MasterEntity; row:
               error={errors[f.name]?.message}
               hint={f.hint}
             >
-              {f.type === "textarea" ? (
+              {f.type === "select" ? (
+                <Controller
+                  control={form.control}
+                  name={f.name}
+                  render={({ field }) => (
+                    <ComboboxField
+                      id={`f-${f.name}`}
+                      value={field.value}
+                      onChange={field.onChange}
+                      options={selectOptions(options[f.optionsFrom!] ?? [], row, f)}
+                      placeholder={`Select ${f.label.toLowerCase()}`}
+                      invalid={!!errors[f.name]}
+                      allowClear={!f.required}
+                    />
+                  )}
+                />
+              ) : f.type === "textarea" ? (
                 <Textarea id={`f-${f.name}`} rows={3} {...form.register(f.name)} aria-invalid={!!errors[f.name]} />
               ) : (
                 <Input
@@ -221,4 +251,12 @@ function MasterFormDialog({ entity, row, onClose }: { entity: MasterEntity; row:
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Keep an archived choice visible when the record being edited still uses it. */
+function selectOptions(opts: Option[], row: Row | "new" | null, f: MasterField): Option[] {
+  if (!row || row === "new") return opts;
+  const current = String(row[f.name] ?? "");
+  if (!current || opts.some((o) => o.value === current)) return opts;
+  return [...opts, { value: current, label: `${String(row[f.display ?? f.name] ?? current)} (archived)` }];
 }

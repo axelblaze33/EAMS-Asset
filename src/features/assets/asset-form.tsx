@@ -16,6 +16,8 @@ import { saveAsset } from "./actions";
 import { categoryProfile, withProfileSpecs } from "./category-profiles";
 import { ASSET_CONDITIONS, MANUAL_STATUSES, assetSchema, type AssetFormValues } from "./schemas";
 
+type CompanyOption = Option & { branchId: string; branchName: string };
+
 export function AssetForm({
   id,
   defaults,
@@ -24,7 +26,7 @@ export function AssetForm({
 }: {
   id?: string;
   defaults: AssetFormValues;
-  options: { categories: Option[]; vendors: Option[]; branches: Option[]; departments: Option[] };
+  options: { categories: Option[]; vendors: Option[]; branches: Option[]; companies: CompanyOption[]; departments: Option[] };
   /** Set when the asset is assigned: status can only change through a return. */
   lockedStatus?: boolean;
 }) {
@@ -36,6 +38,24 @@ export function AssetForm({
 
   const categoryId = useWatch({ control: form.control, name: "categoryId" });
   const specRows = useWatch({ control: form.control, name: "specifications" });
+  const branchId = useWatch({ control: form.control, name: "branchId" });
+  // Only companies under the chosen location; with none chosen, all of them, labelled with their HQ.
+  const companyOptions = branchId
+    ? options.companies.filter((c) => c.branchId === branchId)
+    : options.companies.map((c) => ({ ...c, hint: c.branchName }));
+
+  /** A new location drops a company that doesn't operate there. */
+  function onBranchChange(next: string, set: (v: string) => void) {
+    set(next);
+    const company = options.companies.find((c) => c.value === form.getValues("companyId"));
+    if (company && next && company.branchId !== next) form.setValue("companyId", "");
+  }
+  /** Picking a company fills in its HQ. */
+  function onCompanyChange(next: string, set: (v: string) => void) {
+    set(next);
+    const company = options.companies.find((c) => c.value === next);
+    if (company && !form.getValues("branchId")) form.setValue("branchId", company.branchId);
+  }
   const profileFor = (catId: string) => categoryProfile(options.categories.find((c) => c.value === catId)?.label);
   const profile = profileFor(categoryId);
   const hasLicenseValues = Boolean(defaults.licenseKey || defaults.licenseSeats || defaults.licenseExpiry);
@@ -67,16 +87,27 @@ export function AssetForm({
       <Input id={name} {...props} {...form.register(name)} aria-invalid={!!errors[name]} />
     </Field>
   );
-  const combo = (name: "categoryId" | "vendorId" | "branchId" | "departmentId", label: string, opts: Option[]) => (
-    <Field label={label} error={errors[name]?.message}>
+  const onChangeFor = { categoryId: onCategoryChange, branchId: onBranchChange, companyId: onCompanyChange } as const;
+  const combo = (
+    name: "categoryId" | "vendorId" | "branchId" | "companyId" | "departmentId",
+    label: string,
+    opts: (Option & { hint?: string })[],
+    extra: { hint?: string; emptyText?: string } = {},
+  ) => (
+    <Field label={label} error={errors[name]?.message} hint={extra.hint}>
       <Controller
         control={form.control}
         name={name}
         render={({ field }) => (
           <ComboboxField
             value={field.value}
-            onChange={name === "categoryId" ? (v: string) => onCategoryChange(v, field.onChange) : field.onChange}
-            options={opts} placeholder={`Select ${label.replace(" (optional)", "").toLowerCase()}`} invalid={!!errors[name]} allowClear={name !== "categoryId"} />
+            onChange={name in onChangeFor ? (v: string) => onChangeFor[name as keyof typeof onChangeFor](v, field.onChange) : field.onChange}
+            options={opts}
+            placeholder={`Select ${label.replace(" (optional)", "").toLowerCase()}`}
+            emptyText={extra.emptyText}
+            invalid={!!errors[name]}
+            allowClear={name !== "categoryId"}
+          />
         )}
       />
     </Field>
@@ -126,7 +157,11 @@ export function AssetForm({
               )}
             />
           </Field>
-          {combo("branchId", "Location / branch (optional)", options.branches)}
+          {combo("branchId", "Location / HQ (optional)", options.branches)}
+          {combo("companyId", "Company (optional)", companyOptions, {
+            hint: "The group company this asset belongs to.",
+            emptyText: branchId ? "No companies under this location. Add one in Master Data." : "No companies yet. Add one in Master Data.",
+          })}
           {combo("departmentId", "Owning department (optional)", options.departments)}
         </CardContent>
       </Card>
